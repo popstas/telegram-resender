@@ -331,8 +331,20 @@ async def main() -> None:
 
     @client.on(events.NewMessage)
     async def handler(event: events.NewMessage.Event) -> None:
-        username = getattr(getattr(event.message, "sender", None), "username", None)
-        user_id = getattr(getattr(event.message, "sender", None), "id", None)
+        sender = getattr(event.message, "sender", None)
+        if sender is None:
+            try:
+                sender = await event.get_sender()
+            except Exception:  # pylint: disable=broad-except
+                logger.debug(
+                    "Failed to resolve sender for chat %s msg %s",
+                    getattr(event, "chat_id", None),
+                    getattr(event.message, "id", None),
+                    exc_info=True,
+                )
+                sender = None
+        username = getattr(sender, "username", None)
+        user_id = getattr(sender, "id", None)
         if user_id and user_id in config.get("ignore_user_ids", []):
             logger.debug("Ignoring message from id %s", user_id)
             return
@@ -351,6 +363,13 @@ async def main() -> None:
                     "Ignoring message from @%s for instance %s", username, inst.name
                 )
                 continue
+            if not username and effective_ignore:
+                logger.debug(
+                    "No username for sender id=%s in chat %s; ignore list not applied for instance %s",
+                    user_id,
+                    event.chat_id,
+                    inst.name,
+                )
             await process_message(inst, event)
 
     await run_until_disconnected_resilient(client)

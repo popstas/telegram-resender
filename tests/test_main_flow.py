@@ -442,6 +442,80 @@ async def test_ignore_usernames_override_replaces_global(
 
 
 @pytest.mark.asyncio
+async def test_ignore_usernames_override_lazy_sender(
+    monkeypatch, dummy_tg_client, dummy_message_cls, tmp_path
+):
+    """Handler must await ``event.get_sender()`` when ``message.sender`` is None.
+
+    Reproduces the case where the session owner's own messages arrive with
+    ``message.sender`` not yet resolved by Telethon — username must still be
+    matched against ``ignore_usernames_override`` after a lazy fetch.
+    """
+    config = {"log_level": "info", "ignore_usernames": []}
+    monkeypatch.setattr(app, "load_config", lambda: config)
+    monkeypatch.setattr(app, "get_api_credentials", lambda cfg: (1, "h", "s"))
+
+    dummy_client = dummy_tg_client
+    monkeypatch.setattr(app, "TelegramClient", lambda s, a, b, proxy=None: dummy_client)
+
+    stats_path = tmp_path / "stats.json"
+    monkeypatch.setattr(
+        app, "stats", stats_module.StatsTracker(str(stats_path), flush_interval=0)
+    )
+
+    async def fake_rescan(inst):
+        return None
+
+    monkeypatch.setattr(app, "rescan_loop", fake_rescan)
+
+    async def fake_update(inst, fr):
+        inst.chat_ids = {1}
+
+    monkeypatch.setattr(app, "update_instance_chat_ids", fake_update)
+
+    async def fake_load_instances(cfg):
+        return [
+            app.Instance(
+                name="i",
+                words=["hi"],
+                target_chat=99,
+                ignore_usernames_override=["popstas"],
+            )
+        ]
+
+    monkeypatch.setattr(app, "load_instances", fake_load_instances)
+
+    async def fake_get_message_source(m):
+        return "URL"
+
+    monkeypatch.setattr(tgu, "get_message_source", fake_get_message_source)
+
+    async def fake_get_chat_name(v, safe=False):
+        return "name"
+
+    monkeypatch.setattr(tgu, "get_chat_name", fake_get_chat_name)
+
+    await app.main()
+
+    handler = dummy_client.on_handler
+    msg = dummy_message_cls(SimpleNamespace(channel_id=1), msg_id=7, text="hi")
+    msg.sender = None
+    lazy_calls = []
+
+    async def lazy_get_sender():
+        lazy_calls.append(True)
+        return SimpleNamespace(username="popstas", id=12345)
+
+    event = SimpleNamespace(message=msg, chat_id=1, get_sender=lazy_get_sender)
+    await handler(event)
+
+    assert lazy_calls, "handler must await event.get_sender() when sender is None"
+    assert msg.forwarded == []
+    assert dummy_client.sent == []
+    assert app.stats.data["stats"].get("forwarded_total", 0) == 0
+
+
+@pytest.mark.asyncio
 async def test_ignore_user_ids(
     monkeypatch, dummy_tg_client, dummy_message_cls, tmp_path
 ):

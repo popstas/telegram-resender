@@ -21,6 +21,8 @@ This project forwards Telegram messages that match specific rules to a target ch
 │   ├── run_deepeval.py   # run eval datasets
 │   ├── stats.py          # stats tracking
 │   ├── trace_ids.py      # trace ID storage
+│   ├── seen_chats.py     # once_per_chat dedup state (data/seen_chats.json)
+│   ├── debounce.py       # debounce_ms per-chat batching
 │   ├── telegram_utils.py # Telegram helpers
 │   ├── generate_evals.py # build eval datasets
 │   ├── bulk.py           # bulk operations CLI

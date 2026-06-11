@@ -15,6 +15,8 @@ matching messages to a target chat.
 - Reactions (👍/👎) forward messages to true/false positive chats once per message
 - Langfuse trace IDs for forwarded messages are recorded
 - Automatically create forum topics for chats collected from folders
+- Optional per-chat first-match dedup (`once_per_chat`) with a daily reset hour
+- Optional debounce batching (`debounce_ms`) that groups a conversation into one forward
 
 ## Setup
 
@@ -40,10 +42,70 @@ pip install -r requirements.txt
 - `instances` – list of monitoring instances. Each instance may contain
   `folders`, `chat_ids`, `entities`, `words`, `negative_words`, `ignore_words`, `target_chat`,
   `target_entity`, `target_webhook`, `folder_mute`, `folder_add_topic`, `false_positive_entity`, `true_positive_entity`,
-  `no_forward_message` and `ignore_usernames_override`.
+  `no_forward_message`, `once_per_chat`, `reset_hour`, `debounce_ms` and `ignore_usernames_override`.
 - `ignore_usernames_override` (per instance) – if defined, this instance ignores the
   global `ignore_usernames` and uses its own list instead. An empty list (`[]`) means
   the instance ignores no usernames. Omit the key to inherit the global list.
+
+## Per-chat dedup and debounce batching
+
+Two optional, per-instance forwarding features control *when* matches forward.
+Both default to off, so existing instances are unaffected.
+
+### First match per chat per day (`once_per_chat`)
+
+When `once_per_chat: true`, the instance forwards only the **first** match per
+chat, then suppresses further matches in that chat until the daily reset hour.
+This is handy for folder-backed instances: each chat in the folder triggers at
+most once per day.
+
+- `reset_hour` (default `6`) – local server hour (0–23) at which each chat
+  re-arms. With the default, a chat that matched at 14:00 can match again after
+  06:00 the next day. Ignored when `once_per_chat` is false.
+- State persists across restarts in `data/seen_chats.json`
+  (`{instance: {chat_id: last_forward_epoch}}`), so a restart does not
+  re-forward an already-seen chat.
+
+```yaml
+instances:
+  - name: Folder watcher
+    folders: [Work]
+    words: ["my username"]
+    once_per_chat: true
+    reset_hour: 6
+```
+
+### Debounce batching (`debounce_ms`)
+
+When `debounce_ms > 0`, a trigger does not forward immediately. Instead the
+instance keeps a rolling per-chat buffer of recent messages; every new message
+(any sender) resets the timer, and after `debounce_ms` of silence the whole
+batch is forwarded under a single match header — capturing conversation context
+before and after the trigger. Buffers are in-memory only, so pending batches are
+lost on restart.
+
+If several triggers land in one batch, the header from the **first** trigger
+wins. Default is `0` (forward immediately).
+
+Example timeline with `debounce_ms: 60000` (60s):
+
+```
+10:00:00  "anyone around?"          -> buffered (pre-trigger context)
+10:00:30  "my username, help!"      -> trigger, batch starts, timer set
+10:00:50  "actually figured it out" -> buffered, timer reset
+10:01:50  (60s of silence elapsed)  -> all three forwarded together
+```
+
+```yaml
+instances:
+  - name: Conversation batcher
+    chat_ids: [-1001234567890]
+    words: ["my username"]
+    debounce_ms: 60000
+```
+
+`once_per_chat` and `debounce_ms` can be combined: a suppressed trigger does not
+start a batch, but messages still buffer for any active batch.
 
 `folder_add_topic` is a list of topics that should exist in every chat inside the
 instance folders. When a topic is missing, the bot will create it, send an

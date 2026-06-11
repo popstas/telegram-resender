@@ -91,22 +91,22 @@ unaffected.
 - [x] run `pytest` — must pass before next task.
 
 ### Task 3: Extract reusable forward helper + integrate `once_per_chat`
-- [ ] refactor the forward side-effect block in `process_message`
+- [x] refactor the forward side-effect block in `process_message`
       (`src/app.py`) into `async def _forward_messages(inst, messages, *, trigger_message, used_word, used_prompt, used_score, used_quote, used_reasoning, used_trace_id)`:
       send the one header (from trigger), `forward_to` each message in chronological
       order to every destination, set `trace_id` on the trigger's forwarded copy,
       fire webhook for the trigger. Honor `no_forward_message`.
-- [ ] make `process_message`'s immediate path call `_forward_messages([message], ...)`
+- [x] make `process_message`'s immediate path call `_forward_messages([message], ...)`
       so behavior is unchanged when both features are off.
-- [ ] after trigger eval, when `inst.once_per_chat` is on: suppress forward if
+- [x] after trigger eval, when `inst.once_per_chat` is on: suppress forward if
       `seen_chats.should_forward(...)` is False; otherwise `record(...)` and forward.
       Skip suppression gracefully if `chat_id` is unavailable.
-- [ ] write tests: `once_per_chat` forwards first match, suppresses second in same
+- [x] write tests: `once_per_chat` forwards first match, suppresses second in same
       chat; different chats independent; forwards again after reset boundary;
       `once_per_chat=False` unchanged.
-- [ ] write tests: `_forward_messages` sends single header + forwards all given
+- [x] write tests: `_forward_messages` sends single header + forwards all given
       messages in order; sets trace_id on trigger copy; respects `no_forward_message`.
-- [ ] run `pytest` — must pass before next task.
+- [x] run `pytest` — must pass before next task.
 
 ### Task 4: Add `DebounceManager` (Feature B core)
 - [ ] create `src/debounce.py` with `DebounceManager` keyed by `(instance_name, chat_id)`:

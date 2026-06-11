@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from datetime import datetime
 from typing import List
 
 from telethon import TelegramClient, events, types
@@ -14,6 +15,7 @@ from .config import (
     parse_proxy,
 )
 from .prompts import Prompt, match_prompt
+from .seen_chats import seen_chats
 from .stats import stats as global_stats
 from .telegram_utils import (
     add_topic_from_folders,
@@ -103,6 +105,68 @@ async def rescan_loop(instance: Instance, interval: int = 3600) -> None:
         await update_instance_chat_ids(instance, False)
 
 
+async def _forward_messages(
+    inst: Instance,
+    messages: list,
+    *,
+    trigger_message,
+    used_word: str | None,
+    used_prompt: Prompt | None,
+    used_score: int,
+    used_quote: str | None,
+    used_reasoning: str | None,
+    used_trace_id: str | None,
+) -> None:
+    """Forward a batch of messages to every destination with a single header.
+
+    The header is built from ``trigger_message`` and sent once per destination
+    (unless ``inst.no_forward_message``); each message in ``messages`` is then
+    forwarded in chronological order. The trigger's forwarded copy receives the
+    ``trace_id`` and the webhook fires once for the trigger.
+    """
+    source_name = await get_chat_name(
+        getattr(trigger_message, "chat_id", None), safe=True
+    )
+    try:
+        if not inst.no_forward_message:
+            text = await get_forward_message_text(
+                trigger_message,
+                prompt=used_prompt,
+                score=used_score,
+                word=used_word,
+                quote=used_quote,
+                reasoning=used_reasoning,
+            )
+        destinations = []
+        dest_names = []
+        if inst.target_chat is not None:
+            destinations.append(inst.target_chat)
+            dest_names.append(await get_chat_name(inst.target_chat, safe=True))
+        if inst.target_entity:
+            destinations.append(inst.target_entity)
+            dest_names.append(await get_chat_name(inst.target_entity, safe=True))
+        for dest, dname in zip(destinations, dest_names):
+            if not inst.no_forward_message:
+                await client.send_message(dest, text)
+            for msg in messages:
+                forwarded = await msg.forward_to(dest)
+                if msg is trigger_message and forwarded and used_trace_id:
+                    trace_ids.set(forwarded.chat_id, forwarded.id, used_trace_id)
+                f_url = get_message_url(forwarded) if forwarded else None
+                logger.info(
+                    "Forwarded message %s from %s to %s for %s (target url: %s)",
+                    msg.id,
+                    source_name,
+                    dname,
+                    inst.name,
+                    f_url,
+                )
+    except Exception as exc:  # pylint: disable=broad-except
+        logger.error("Failed to forward message: %s", exc)
+    if inst.target_webhook is not None:
+        await webhook.send_webhook(inst.target_webhook, trigger_message)
+
+
 async def process_message(inst: Instance, event: events.NewMessage.Event) -> None:
     """Handle a new message for a specific instance."""
     message = event.message
@@ -148,44 +212,32 @@ async def process_message(inst: Instance, event: events.NewMessage.Event) -> Non
                 if sc >= (p.threshold or 4):
                     forward = True
                     break
-    if forward:
-        try:
-            if not inst.no_forward_message:
-                text = await get_forward_message_text(
-                    message,
-                    prompt=used_prompt,
-                    score=used_score,
-                    word=used_word,
-                    quote=used_quote,
-                    reasoning=used_reasoning,
-                )
-            destinations = []
-            dest_names = []
-            if inst.target_chat is not None:
-                destinations.append(inst.target_chat)
-                dest_names.append(await get_chat_name(inst.target_chat, safe=True))
-            if inst.target_entity:
-                destinations.append(inst.target_entity)
-                dest_names.append(await get_chat_name(inst.target_entity, safe=True))
-            for dest, dname in zip(destinations, dest_names):
-                if not inst.no_forward_message:
-                    await client.send_message(dest, text)
-                forwarded = await message.forward_to(dest)
-                if forwarded and used_trace_id:
-                    trace_ids.set(forwarded.chat_id, forwarded.id, used_trace_id)
-                f_url = get_message_url(forwarded) if forwarded else None
-                logger.info(
-                    "Forwarded message %s from %s to %s for %s (target url: %s)",
+    if forward and inst.once_per_chat:
+        chat_id = getattr(event, "chat_id", None)
+        if chat_id is not None:
+            now = datetime.now()
+            if seen_chats.should_forward(inst.name, chat_id, now, inst.reset_hour):
+                seen_chats.record(inst.name, chat_id, now)
+            else:
+                logger.debug(
+                    "Suppressing message %s for %s: already forwarded from chat %s today",
                     message.id,
-                    chat_name,
-                    dname,
                     inst.name,
-                    f_url,
+                    chat_id,
                 )
-        except Exception as exc:  # pylint: disable=broad-except
-            logger.error("Failed to forward message: %s", exc)
-        if inst.target_webhook is not None:
-            await webhook.send_webhook(inst.target_webhook, message)
+                forward = False
+    if forward:
+        await _forward_messages(
+            inst,
+            [message],
+            trigger_message=message,
+            used_word=used_word,
+            used_prompt=used_prompt,
+            used_score=used_score,
+            used_quote=used_quote,
+            used_reasoning=used_reasoning,
+            used_trace_id=used_trace_id,
+        )
     else:
         logger.debug(
             "Message %s from %s not forwarded for %s",

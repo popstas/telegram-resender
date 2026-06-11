@@ -797,6 +797,292 @@ async def test_ignore_words(monkeypatch, dummy_tg_client, dummy_message_cls, tmp
 
 
 @pytest.mark.asyncio
+async def test_forward_messages_single_header_batch(
+    monkeypatch, dummy_message_cls, tmp_path
+):
+    """_forward_messages sends one header then forwards all messages in order."""
+    sent = []
+
+    class DummyClient:
+        async def send_message(self, *a, **k):
+            sent.append((a, k))
+
+    app.client = DummyClient()
+    tgu.client = app.client
+
+    inst = app.Instance(name="b", words=["hi"], target_chat=1, target_entity="ent")
+
+    forwarded_log = []
+
+    async def fake_text(message, **kwargs):
+        return "HEADER"
+
+    async def fake_get_chat_name(v, safe=False):
+        return "name"
+
+    monkeypatch.setattr(app, "get_forward_message_text", fake_text)
+    monkeypatch.setattr(app, "get_chat_name", fake_get_chat_name)
+
+    m1 = dummy_message_cls(SimpleNamespace(channel_id=1), msg_id=1, text="a")
+    m2 = dummy_message_cls(SimpleNamespace(channel_id=1), msg_id=2, text="hi")
+    m3 = dummy_message_cls(SimpleNamespace(channel_id=1), msg_id=3, text="c")
+
+    await app._forward_messages(
+        inst,
+        [m1, m2, m3],
+        trigger_message=m2,
+        used_word="hi",
+        used_prompt=None,
+        used_score=0,
+        used_quote=None,
+        used_reasoning=None,
+        used_trace_id=None,
+    )
+
+    # Two destinations -> header sent twice.
+    assert [s[0][0] for s in sent] == [1, "ent"]
+    # Each message forwarded to both destinations in chronological order.
+    assert m1.forwarded == [1, "ent"]
+    assert m2.forwarded == [1, "ent"]
+    assert m3.forwarded == [1, "ent"]
+
+
+@pytest.mark.asyncio
+async def test_forward_messages_no_forward_message(
+    monkeypatch, dummy_message_cls, tmp_path
+):
+    """_forward_messages honors no_forward_message (forwards without header)."""
+    sent = []
+
+    class DummyClient:
+        async def send_message(self, *a, **k):
+            sent.append((a, k))
+
+    app.client = DummyClient()
+    tgu.client = app.client
+
+    inst = app.Instance(name="b", words=["hi"], target_chat=1, no_forward_message=True)
+
+    async def fake_get_chat_name(v, safe=False):
+        return "name"
+
+    monkeypatch.setattr(app, "get_chat_name", fake_get_chat_name)
+
+    m1 = dummy_message_cls(SimpleNamespace(channel_id=1), msg_id=1, text="hi")
+
+    await app._forward_messages(
+        inst,
+        [m1],
+        trigger_message=m1,
+        used_word="hi",
+        used_prompt=None,
+        used_score=0,
+        used_quote=None,
+        used_reasoning=None,
+        used_trace_id=None,
+    )
+
+    assert sent == []
+    assert m1.forwarded == [1]
+
+
+@pytest.mark.asyncio
+async def test_forward_messages_sets_trace_id_on_trigger(
+    monkeypatch, dummy_message_cls, tmp_path
+):
+    """trace_id is set only on the trigger's forwarded copy."""
+    sent = []
+
+    class DummyClient:
+        async def send_message(self, *a, **k):
+            sent.append((a, k))
+
+    app.client = DummyClient()
+    tgu.client = app.client
+
+    inst = app.Instance(name="b", words=["hi"], target_chat=1)
+
+    trace_calls = []
+
+    def fake_set(chat_id, msg_id, trace_id):
+        trace_calls.append((chat_id, msg_id, trace_id))
+
+    monkeypatch.setattr(app.trace_ids, "set", fake_set)
+
+    async def fake_text(message, **kwargs):
+        return "HEADER"
+
+    async def fake_get_chat_name(v, safe=False):
+        return "name"
+
+    monkeypatch.setattr(app, "get_forward_message_text", fake_text)
+    monkeypatch.setattr(app, "get_chat_name", fake_get_chat_name)
+    monkeypatch.setattr(app, "get_message_url", lambda f: "url")
+
+    class ForwardingMessage(dummy_message_cls):
+        async def forward_to(self, target):
+            self.forwarded.append(target)
+            return SimpleNamespace(chat_id=500, id=self.id + 100)
+
+    m1 = ForwardingMessage(SimpleNamespace(channel_id=1), msg_id=1, text="ctx")
+    m2 = ForwardingMessage(SimpleNamespace(channel_id=1), msg_id=2, text="hi")
+
+    await app._forward_messages(
+        inst,
+        [m1, m2],
+        trigger_message=m2,
+        used_word="hi",
+        used_prompt=None,
+        used_score=0,
+        used_quote=None,
+        used_reasoning=None,
+        used_trace_id="trace-xyz",
+    )
+
+    # Only the trigger (m2 -> forwarded id 102) gets the trace_id.
+    assert trace_calls == [(500, 102, "trace-xyz")]
+
+
+@pytest.mark.asyncio
+async def test_once_per_chat_first_forwards_then_suppresses(
+    monkeypatch, dummy_message_cls, tmp_path
+):
+    """once_per_chat forwards the first match and suppresses later ones."""
+    from datetime import datetime
+
+    import src.seen_chats as seen_chats_module
+
+    class DummyClient:
+        async def send_message(self, *a, **k):
+            pass
+
+    app.client = DummyClient()
+    tgu.client = app.client
+    app.stats = stats_module.StatsTracker(
+        str(tmp_path / "stats.json"), flush_interval=0
+    )
+
+    store = seen_chats_module.SeenChatStore(str(tmp_path / "seen.json"))
+    monkeypatch.setattr(app, "seen_chats", store)
+
+    fixed_now = datetime(2026, 6, 11, 12, 0, 0)
+    monkeypatch.setattr(app, "datetime", SimpleNamespace(now=lambda: fixed_now))
+
+    async def fake_text(message, **kwargs):
+        return "HEADER"
+
+    async def fake_get_chat_name(v, safe=False):
+        return "name"
+
+    monkeypatch.setattr(app, "get_forward_message_text", fake_text)
+    monkeypatch.setattr(app, "get_chat_name", fake_get_chat_name)
+
+    inst = app.Instance(name="o", words=["hi"], target_chat=1, once_per_chat=True)
+
+    m1 = dummy_message_cls(SimpleNamespace(channel_id=1), msg_id=1, text="hi")
+    await app.process_message(inst, SimpleNamespace(message=m1, chat_id=10))
+    assert m1.forwarded == [1]
+
+    m2 = dummy_message_cls(SimpleNamespace(channel_id=1), msg_id=2, text="hi")
+    await app.process_message(inst, SimpleNamespace(message=m2, chat_id=10))
+    assert m2.forwarded == []
+
+    # Different chat is independent.
+    m3 = dummy_message_cls(SimpleNamespace(channel_id=1), msg_id=3, text="hi")
+    await app.process_message(inst, SimpleNamespace(message=m3, chat_id=20))
+    assert m3.forwarded == [1]
+
+
+@pytest.mark.asyncio
+async def test_once_per_chat_rearms_after_reset(
+    monkeypatch, dummy_message_cls, tmp_path
+):
+    """once_per_chat forwards again after the daily reset boundary passes."""
+    from datetime import datetime
+
+    import src.seen_chats as seen_chats_module
+
+    class DummyClient:
+        async def send_message(self, *a, **k):
+            pass
+
+    app.client = DummyClient()
+    tgu.client = app.client
+    app.stats = stats_module.StatsTracker(
+        str(tmp_path / "stats.json"), flush_interval=0
+    )
+
+    store = seen_chats_module.SeenChatStore(str(tmp_path / "seen.json"))
+    monkeypatch.setattr(app, "seen_chats", store)
+
+    async def fake_text(message, **kwargs):
+        return "HEADER"
+
+    async def fake_get_chat_name(v, safe=False):
+        return "name"
+
+    monkeypatch.setattr(app, "get_forward_message_text", fake_text)
+    monkeypatch.setattr(app, "get_chat_name", fake_get_chat_name)
+
+    inst = app.Instance(
+        name="o", words=["hi"], target_chat=1, once_per_chat=True, reset_hour=6
+    )
+
+    clock = {"now": datetime(2026, 6, 11, 7, 0, 0)}
+    monkeypatch.setattr(app, "datetime", SimpleNamespace(now=lambda: clock["now"]))
+
+    m1 = dummy_message_cls(SimpleNamespace(channel_id=1), msg_id=1, text="hi")
+    await app.process_message(inst, SimpleNamespace(message=m1, chat_id=10))
+    assert m1.forwarded == [1]
+
+    # Same day, before next reset -> suppressed.
+    m2 = dummy_message_cls(SimpleNamespace(channel_id=1), msg_id=2, text="hi")
+    await app.process_message(inst, SimpleNamespace(message=m2, chat_id=10))
+    assert m2.forwarded == []
+
+    # Next day after reset hour -> forwards again.
+    clock["now"] = datetime(2026, 6, 12, 7, 0, 0)
+    m3 = dummy_message_cls(SimpleNamespace(channel_id=1), msg_id=3, text="hi")
+    await app.process_message(inst, SimpleNamespace(message=m3, chat_id=10))
+    assert m3.forwarded == [1]
+
+
+@pytest.mark.asyncio
+async def test_once_per_chat_disabled_unchanged(
+    monkeypatch, dummy_message_cls, tmp_path
+):
+    """once_per_chat=False forwards every match (default behavior)."""
+
+    class DummyClient:
+        async def send_message(self, *a, **k):
+            pass
+
+    app.client = DummyClient()
+    tgu.client = app.client
+    app.stats = stats_module.StatsTracker(
+        str(tmp_path / "stats.json"), flush_interval=0
+    )
+
+    async def fake_text(message, **kwargs):
+        return "HEADER"
+
+    async def fake_get_chat_name(v, safe=False):
+        return "name"
+
+    monkeypatch.setattr(app, "get_forward_message_text", fake_text)
+    monkeypatch.setattr(app, "get_chat_name", fake_get_chat_name)
+
+    inst = app.Instance(name="o", words=["hi"], target_chat=1)
+
+    m1 = dummy_message_cls(SimpleNamespace(channel_id=1), msg_id=1, text="hi")
+    await app.process_message(inst, SimpleNamespace(message=m1, chat_id=10))
+    m2 = dummy_message_cls(SimpleNamespace(channel_id=1), msg_id=2, text="hi")
+    await app.process_message(inst, SimpleNamespace(message=m2, chat_id=10))
+    assert m1.forwarded == [1]
+    assert m2.forwarded == [1]
+
+
+@pytest.mark.asyncio
 async def test_negative_words(
     monkeypatch, dummy_tg_client, dummy_message_cls, tmp_path
 ):

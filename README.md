@@ -105,7 +105,8 @@ instances:
 ```
 
 `once_per_chat` and `debounce_ms` can be combined: a suppressed trigger does not
-start a batch, but messages still buffer for any active batch.
+start a batch, but messages still buffer for any active batch. Messages without a
+resolvable chat ID bypass both features and forward immediately.
 
 `folder_add_topic` is a list of topics that should exist in every chat inside the
 instance folders. When a topic is missing, the bot will create it, send an
@@ -126,7 +127,10 @@ overall, per-instance and per-day counters. Besides the total processed
 messages, the file tracks how many were forwarded in total, due to word matches
 or prompt matches, and token usage in each scope: `input_tokens` (prompt),
 `output_tokens` (completion), and `tokens` (total from the API when available,
-otherwise the sum of input and output). Instances
+otherwise the sum of input and output). With `debounce_ms`, the forwarded count
+for a triggering message is recorded when the batch flushes, not when the trigger
+arrives; context messages pulled into a batch are still counted as not forwarded.
+Instances
 that use Telegram `folders` also get a `chats` field: a sorted list of normalized
 chat IDs currently resolved from those folders (updated on startup and on each
 folder rescan). If you have

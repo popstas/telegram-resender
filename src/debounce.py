@@ -13,7 +13,7 @@ def _default_scheduler(delay: float, callback: Callable[[], Any]) -> Any:
     rescheduled. Requires a running event loop (the production code path).
     """
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     return loop.call_later(delay, callback)
 
 

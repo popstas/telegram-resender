@@ -142,13 +142,14 @@ unaffected.
 - [x] run `pytest` — must pass before next task.
 
 ### Task 6: Verify acceptance criteria
-- [ ] verify Overview requirements: per-chat first-match dedup with daily reset; debounce
+- [x] verify Overview requirements: per-chat first-match dedup with daily reset; debounce
       batching with rolling extend, pre-trigger context, single header, first-header-wins.
-- [ ] verify edge cases: missing sender/chat_id; both features enabled together; features
+- [x] verify edge cases: missing sender/chat_id; both features enabled together; features
       off = unchanged behavior.
-- [ ] run full `pytest` suite — all pass.
-- [ ] run `pre-commit --all-files` — black + isort clean.
-- [ ] verify coverage meets project standard (~80%+) for new modules.
+- [x] run full `pytest` suite — all pass. (148 passed)
+- [x] run `pre-commit --all-files` — black + isort clean.
+- [x] verify coverage meets project standard (~80%+) for new modules.
+      (debounce.py 100%, seen_chats.py 98%)
 
 ### Task 7: [Final] Update documentation
 - [ ] update `README.md`: document `once_per_chat`, `reset_hour`, `debounce_ms`

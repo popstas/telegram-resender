@@ -152,9 +152,9 @@ unaffected.
       (debounce.py 100%, seen_chats.py 98%)
 
 ### Task 7: [Final] Update documentation
-- [ ] update `README.md`: document `once_per_chat`, `reset_hour`, `debounce_ms`
+- [x] update `README.md`: document `once_per_chat`, `reset_hour`, `debounce_ms`
       with the debounce example timeline.
-- [ ] update `AGENTS.md` repository tree with `src/seen_chats.py` and `src/debounce.py`.
+- [x] update `AGENTS.md` repository tree with `src/seen_chats.py` and `src/debounce.py`.
 
 ## Technical Details
 - **`SeenChatStore`** (`data/seen_chats.json`): `{instance: {chat_id(str): epoch(float)}}`.

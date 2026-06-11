@@ -109,23 +109,23 @@ unaffected.
 - [x] run `pytest` — must pass before next task.
 
 ### Task 4: Add `DebounceManager` (Feature B core)
-- [ ] create `src/debounce.py` with `DebounceManager` keyed by `(instance_name, chat_id)`:
+- [x] create `src/debounce.py` with `DebounceManager` keyed by `(instance_name, chat_id)`:
       rolling buffer of `(epoch, message)`, active-batch flag, captured header context,
       and an asyncio flush timer. Accept injectable `clock` (callable → float) and a
       scheduler so timing is testable.
-- [ ] implement `add_message(key, message, now, is_trigger, header_ctx, flush_cb)`:
+- [x] implement `add_message(key, message, now, is_trigger, header_ctx, flush_cb)`:
       append; when no active batch, trim buffer to `now - debounce_ms` (pre-trigger
       context); on trigger with no active batch, activate batch (seed = current buffer)
       and capture header; on trigger with active batch, keep first header (first-header-wins);
       always (re)schedule the flush timer to fire after `debounce_ms` of silence.
-- [ ] implement flush: invoke `flush_cb` with the ordered batch + header context, then
+- [x] implement flush: invoke `flush_cb` with the ordered batch + header context, then
       clear the batch for that key.
-- [ ] write tests (sync bookkeeping): pre-trigger messages within window are included,
+- [x] write tests (sync bookkeeping): pre-trigger messages within window are included,
       older ones trimmed; non-trigger messages don't start a batch; second trigger keeps
       first header; rolling new message extends/reset the scheduled fire time.
-- [ ] write tests (async, tiny `debounce_ms`): timer flush calls `flush_cb` once with all
+- [x] write tests (async, tiny `debounce_ms`): timer flush calls `flush_cb` once with all
       batched messages in chronological order; new message before expiry delays flush.
-- [ ] run `pytest` — must pass before next task.
+- [x] run `pytest` — must pass before next task.
 
 ### Task 5: Wire `DebounceManager` into the pipeline
 - [ ] in `src/app.py`, instantiate one `DebounceManager` and, when `inst.debounce_ms > 0`,

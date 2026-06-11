@@ -47,6 +47,9 @@ class Instance:
     folder_mute: bool = False
     no_forward_message: bool = False
     ignore_usernames_override: Optional[List[str]] = None
+    once_per_chat: bool = False
+    reset_hour: int = 6
+    debounce_ms: int = 0
     prompts: List[Prompt] = field(default_factory=list)
     folder_add_topic: List[FolderTopic] = field(default_factory=list)
 
@@ -173,6 +176,18 @@ async def load_instances(config: dict) -> List[Instance]:
                 )
             target_webhook = TargetWebhook(url=url, format=fmt)
 
+        reset_hour = inst_cfg.get("reset_hour", 6)
+        if not isinstance(reset_hour, int) or isinstance(reset_hour, bool):
+            raise ValueError(f"reset_hour must be an integer, got {reset_hour!r}")
+        if not 0 <= reset_hour <= 23:
+            raise ValueError(f"reset_hour must be between 0 and 23, got {reset_hour!r}")
+
+        debounce_ms = inst_cfg.get("debounce_ms", 0)
+        if not isinstance(debounce_ms, int) or isinstance(debounce_ms, bool):
+            raise ValueError(f"debounce_ms must be an integer, got {debounce_ms!r}")
+        if debounce_ms < 0:
+            raise ValueError(f"debounce_ms must be >= 0, got {debounce_ms!r}")
+
         instance = Instance(
             name=inst_cfg.get("name", "instance"),
             folders=inst_cfg.get("folders", []),
@@ -193,6 +208,9 @@ async def load_instances(config: dict) -> List[Instance]:
                 if "ignore_usernames_override" in inst_cfg
                 else None
             ),
+            once_per_chat=inst_cfg.get("once_per_chat", False),
+            reset_hour=reset_hour,
+            debounce_ms=debounce_ms,
             prompts=parsed_prompts,
             folder_add_topic=folder_topics,
         )

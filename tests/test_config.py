@@ -143,6 +143,63 @@ async def test_load_instances_target_webhook_absent_defaults_to_none():
 
 
 @pytest.mark.asyncio
+async def test_load_instances_dedup_debounce_defaults():
+    cfg = {"instances": [{"name": "inst", "words": []}]}
+    instances = await config.load_instances(cfg)
+    assert instances[0].once_per_chat is False
+    assert instances[0].reset_hour == 6
+    assert instances[0].debounce_ms == 0
+
+
+@pytest.mark.asyncio
+async def test_load_instances_dedup_debounce_values():
+    cfg = {
+        "instances": [
+            {
+                "name": "inst",
+                "words": [],
+                "once_per_chat": True,
+                "reset_hour": 3,
+                "debounce_ms": 60000,
+            }
+        ]
+    }
+    instances = await config.load_instances(cfg)
+    assert instances[0].once_per_chat is True
+    assert instances[0].reset_hour == 3
+    assert instances[0].debounce_ms == 60000
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("bad", [-1, 24, 100])
+async def test_load_instances_reset_hour_out_of_range(bad):
+    cfg = {"instances": [{"name": "inst", "words": [], "reset_hour": bad}]}
+    with pytest.raises(ValueError, match="reset_hour"):
+        await config.load_instances(cfg)
+
+
+@pytest.mark.asyncio
+async def test_load_instances_reset_hour_not_int():
+    cfg = {"instances": [{"name": "inst", "words": [], "reset_hour": "6"}]}
+    with pytest.raises(ValueError, match="reset_hour"):
+        await config.load_instances(cfg)
+
+
+@pytest.mark.asyncio
+async def test_load_instances_debounce_negative():
+    cfg = {"instances": [{"name": "inst", "words": [], "debounce_ms": -1}]}
+    with pytest.raises(ValueError, match="debounce_ms"):
+        await config.load_instances(cfg)
+
+
+@pytest.mark.asyncio
+async def test_load_instances_debounce_not_int():
+    cfg = {"instances": [{"name": "inst", "words": [], "debounce_ms": "100"}]}
+    with pytest.raises(ValueError, match="debounce_ms"):
+        await config.load_instances(cfg)
+
+
+@pytest.mark.asyncio
 async def test_load_instances_folder_add_topic():
     cfg = {
         "instances": [

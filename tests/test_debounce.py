@@ -276,6 +276,21 @@ async def test_async_timer_flushes_once_in_order():
 
 
 @pytest.mark.asyncio
+async def test_async_flush_exception_is_logged(caplog):
+    mgr = DebounceManager()
+
+    async def cb(batch, ctx):
+        raise RuntimeError("boom")
+
+    mgr.add_message(
+        KEY, "trigger", debounce_ms=20, is_trigger=True, header_ctx=None, flush_cb=cb
+    )
+    with caplog.at_level("ERROR"):
+        await asyncio.sleep(0.05)
+    assert any("Debounce flush failed" in r.message for r in caplog.records)
+
+
+@pytest.mark.asyncio
 async def test_async_new_message_delays_flush():
     mgr = DebounceManager()
     flushed = []

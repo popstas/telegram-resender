@@ -65,19 +65,19 @@ unaffected.
 ## Implementation Steps
 
 ### Task 1: Add `SeenChatStore` persistence (Feature A state)
-- [ ] create `src/seen_chats.py` mirroring `TraceStore`: dirty-flag + interval flush
+- [x] create `src/seen_chats.py` mirroring `TraceStore`: dirty-flag + interval flush
       + `atexit.register`, stored at `data/seen_chats.json`, format
       `{instance_name: {chat_id: last_forward_epoch}}`.
-- [ ] implement `_reset_boundary(now, reset_hour)` helper: most recent local
+- [x] implement `_reset_boundary(now, reset_hour)` helper: most recent local
       occurrence of `reset_hour:00` (today if `now.hour >= reset_hour`, else yesterday).
-- [ ] implement `should_forward(instance, chat_id, now, reset_hour) -> bool`
+- [x] implement `should_forward(instance, chat_id, now, reset_hour) -> bool`
       (True when no record or stored epoch < reset boundary) and
       `record(instance, chat_id, now)`.
-- [ ] write tests: boundary before vs after `reset_hour`; first call True then False
+- [x] write tests: boundary before vs after `reset_hour`; first call True then False
       same day; True again after crossing next reset boundary; multiple
       instances/chats isolated.
-- [ ] write tests: persistence reload from disk; corrupt/missing file → empty store.
-- [ ] run `pytest` — must pass before next task.
+- [x] write tests: persistence reload from disk; corrupt/missing file → empty store.
+- [x] run `pytest` — must pass before next task.
 
 ### Task 2: Add config fields `once_per_chat`, `reset_hour`, `debounce_ms`
 - [ ] add `once_per_chat: bool = False`, `reset_hour: int = 6`,

@@ -91,9 +91,7 @@ class DebounceManager:
         if state.active:
             if state.handle is not None:
                 state.handle.cancel()
-            state.handle = self.scheduler(
-                window, lambda: self._on_timer(key, flush_cb)
-            )
+            state.handle = self.scheduler(window, lambda: self._on_timer(key, flush_cb))
 
     def _on_timer(self, key: Hashable, flush_cb: Callable[[list, Any], Any]) -> None:
         """Timer callback: flush the batch, scheduling the coroutine if needed."""

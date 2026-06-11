@@ -128,18 +128,18 @@ unaffected.
 - [x] run `pytest` — must pass before next task.
 
 ### Task 5: Wire `DebounceManager` into the pipeline
-- [ ] in `src/app.py`, instantiate one `DebounceManager` and, when `inst.debounce_ms > 0`,
+- [x] in `src/app.py`, instantiate one `DebounceManager` and, when `inst.debounce_ms > 0`,
       route messages reaching the post-ignore stage of `process_message` through
       `add_message` (buffer every message; mark `is_trigger` = effective forward after
       `once_per_chat`). `flush_cb` calls `_forward_messages(batch, ...)`.
-- [ ] defer trigger side effects (`forwarded=True` stats, webhook, trace) to flush for
+- [x] defer trigger side effects (`forwarded=True` stats, webhook, trace) to flush for
       the debounced path; keep `forwarded=False` stats immediate for non-trigger messages;
       leave the `debounce_ms == 0` path exactly as today.
-- [ ] write tests: `debounce_ms > 0` buffers and flushes via `_forward_messages` (mocked)
+- [x] write tests: `debounce_ms > 0` buffers and flushes via `_forward_messages` (mocked)
       with context + trigger; `debounce_ms == 0` keeps the immediate single-message path;
       `once_per_chat` + debounce together (suppressed trigger doesn't start a batch but
       message still buffers).
-- [ ] run `pytest` — must pass before next task.
+- [x] run `pytest` — must pass before next task.
 
 ### Task 6: Verify acceptance criteria
 - [ ] verify Overview requirements: per-chat first-match dedup with daily reset; debounce

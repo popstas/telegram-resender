@@ -1082,6 +1082,190 @@ async def test_once_per_chat_disabled_unchanged(
     assert m2.forwarded == [1]
 
 
+class _FakeHandle:
+    def __init__(self):
+        self.cancelled = False
+
+    def cancel(self):
+        self.cancelled = True
+
+
+class _FakeScheduler:
+    """Records scheduled callbacks so tests can fire them deterministically."""
+
+    def __init__(self):
+        self.calls = []
+
+    def __call__(self, delay, callback):
+        handle = _FakeHandle()
+        self.calls.append((delay, callback, handle))
+        return handle
+
+    def fire_last(self):
+        self.calls[-1][1]()
+
+
+@pytest.mark.asyncio
+async def test_debounce_buffers_and_flushes(monkeypatch, dummy_message_cls, tmp_path):
+    """debounce_ms > 0 buffers messages and flushes the batch via _forward_messages."""
+    from src.debounce import DebounceManager
+
+    class DummyClient:
+        async def send_message(self, *a, **k):
+            pass
+
+    app.client = DummyClient()
+    tgu.client = app.client
+    app.stats = stats_module.StatsTracker(
+        str(tmp_path / "stats.json"), flush_interval=0
+    )
+
+    forward_calls = []
+
+    async def fake_forward(inst, messages, **kwargs):
+        forward_calls.append((messages, kwargs))
+
+    monkeypatch.setattr(app, "_forward_messages", fake_forward)
+
+    scheduler = _FakeScheduler()
+    mgr = DebounceManager(clock=lambda: 0.0, scheduler=scheduler)
+    monkeypatch.setattr(app, "debounce_manager", mgr)
+
+    inst = app.Instance(name="d", words=["hi"], target_chat=1, debounce_ms=1000)
+
+    # Non-trigger context message: buffered, counted immediately as not forwarded.
+    m1 = dummy_message_cls(SimpleNamespace(channel_id=1), msg_id=1, text="hello")
+    await app.process_message(inst, SimpleNamespace(message=m1, chat_id=10))
+    assert forward_calls == []
+    assert scheduler.calls == []
+    assert app.stats.data["stats"]["total"] == 1
+    assert app.stats.data["stats"]["forwarded_total"] == 0
+
+    # Trigger: activates batch, schedules flush, defers the forwarded increment.
+    m2 = dummy_message_cls(SimpleNamespace(channel_id=1), msg_id=2, text="hi")
+    await app.process_message(inst, SimpleNamespace(message=m2, chat_id=10))
+    assert forward_calls == []
+    assert len(scheduler.calls) == 1
+    assert app.stats.data["stats"]["total"] == 1  # trigger deferred
+
+    scheduler.fire_last()
+    await asyncio.sleep(0.01)
+
+    assert len(forward_calls) == 1
+    messages, kwargs = forward_calls[0]
+    assert messages == [m1, m2]
+    assert kwargs["trigger_message"] is m2
+    assert kwargs["used_word"] == "hi"
+    # Deferred trigger stats fire at flush.
+    assert app.stats.data["stats"]["total"] == 2
+    assert app.stats.data["stats"]["forwarded_total"] == 1
+
+
+@pytest.mark.asyncio
+async def test_debounce_zero_keeps_immediate_path(
+    monkeypatch, dummy_message_cls, tmp_path
+):
+    """debounce_ms == 0 keeps the immediate single-message forward path."""
+
+    class DummyClient:
+        async def send_message(self, *a, **k):
+            pass
+
+    app.client = DummyClient()
+    tgu.client = app.client
+    app.stats = stats_module.StatsTracker(
+        str(tmp_path / "stats.json"), flush_interval=0
+    )
+
+    scheduler = _FakeScheduler()
+    from src.debounce import DebounceManager
+
+    mgr = DebounceManager(clock=lambda: 0.0, scheduler=scheduler)
+    monkeypatch.setattr(app, "debounce_manager", mgr)
+
+    async def fake_text(message, **kwargs):
+        return "HEADER"
+
+    async def fake_get_chat_name(v, safe=False):
+        return "name"
+
+    monkeypatch.setattr(app, "get_forward_message_text", fake_text)
+    monkeypatch.setattr(app, "get_chat_name", fake_get_chat_name)
+
+    inst = app.Instance(name="d", words=["hi"], target_chat=1)
+
+    m1 = dummy_message_cls(SimpleNamespace(channel_id=1), msg_id=1, text="hi")
+    await app.process_message(inst, SimpleNamespace(message=m1, chat_id=10))
+
+    # Forwarded immediately, debounce manager untouched.
+    assert m1.forwarded == [1]
+    assert scheduler.calls == []
+    assert mgr._states == {}
+    assert app.stats.data["stats"]["forwarded_total"] == 1
+
+
+@pytest.mark.asyncio
+async def test_debounce_with_once_per_chat_suppressed_trigger_buffers(
+    monkeypatch, dummy_message_cls, tmp_path
+):
+    """A once_per_chat-suppressed trigger does not start a batch but still buffers."""
+    from datetime import datetime
+
+    import src.seen_chats as seen_chats_module
+    from src.debounce import DebounceManager
+
+    class DummyClient:
+        async def send_message(self, *a, **k):
+            pass
+
+    app.client = DummyClient()
+    tgu.client = app.client
+    app.stats = stats_module.StatsTracker(
+        str(tmp_path / "stats.json"), flush_interval=0
+    )
+
+    store = seen_chats_module.SeenChatStore(str(tmp_path / "seen.json"))
+    monkeypatch.setattr(app, "seen_chats", store)
+    monkeypatch.setattr(
+        app, "datetime", SimpleNamespace(now=lambda: datetime(2026, 6, 11, 12, 0, 0))
+    )
+
+    forward_calls = []
+
+    async def fake_forward(inst, messages, **kwargs):
+        forward_calls.append((messages, kwargs))
+
+    monkeypatch.setattr(app, "_forward_messages", fake_forward)
+
+    scheduler = _FakeScheduler()
+    mgr = DebounceManager(clock=lambda: 0.0, scheduler=scheduler)
+    monkeypatch.setattr(app, "debounce_manager", mgr)
+
+    inst = app.Instance(
+        name="d", words=["hi"], target_chat=1, once_per_chat=True, debounce_ms=1000
+    )
+    key = ("d", 10)
+
+    # First trigger: forwards (records once_per_chat), starts a batch.
+    m1 = dummy_message_cls(SimpleNamespace(channel_id=1), msg_id=1, text="hi")
+    await app.process_message(inst, SimpleNamespace(message=m1, chat_id=10))
+    assert len(scheduler.calls) == 1
+    scheduler.fire_last()
+    await asyncio.sleep(0.01)
+    assert len(forward_calls) == 1
+
+    # Second trigger is suppressed by once_per_chat -> no new batch, but it buffers.
+    m2 = dummy_message_cls(SimpleNamespace(channel_id=1), msg_id=2, text="hi")
+    await app.process_message(inst, SimpleNamespace(message=m2, chat_id=10))
+    assert len(forward_calls) == 1  # no new flush
+    assert key in mgr._states
+    assert [m for _, m in mgr._states[key].buffer] == [m2]
+    assert mgr._states[key].active is False
+    # Suppressed message counted immediately as not forwarded.
+    assert app.stats.data["stats"]["total"] == 2
+    assert app.stats.data["stats"]["forwarded_total"] == 1
+
+
 @pytest.mark.asyncio
 async def test_negative_words(
     monkeypatch, dummy_tg_client, dummy_message_cls, tmp_path

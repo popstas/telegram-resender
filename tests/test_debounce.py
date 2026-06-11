@@ -53,13 +53,34 @@ def test_pretrigger_within_window_included_older_trimmed():
         flushed.append((batch, ctx))
 
     # debounce_ms=1000 → 1.0s window. now is in seconds.
-    mgr.add_message(KEY, "old", 0.0, debounce_ms=1000, is_trigger=False,
-                    header_ctx=None, flush_cb=cb)
-    mgr.add_message(KEY, "recent", 0.5, debounce_ms=1000, is_trigger=False,
-                    header_ctx=None, flush_cb=cb)
+    mgr.add_message(
+        KEY,
+        "old",
+        0.0,
+        debounce_ms=1000,
+        is_trigger=False,
+        header_ctx=None,
+        flush_cb=cb,
+    )
+    mgr.add_message(
+        KEY,
+        "recent",
+        0.5,
+        debounce_ms=1000,
+        is_trigger=False,
+        header_ctx=None,
+        flush_cb=cb,
+    )
     # trigger at t=1.2 → cutoff 0.2, "old" (t=0) trimmed, "recent" (t=0.5) kept
-    mgr.add_message(KEY, "trigger", 1.2, debounce_ms=1000, is_trigger=True,
-                    header_ctx={"h": 1}, flush_cb=cb)
+    mgr.add_message(
+        KEY,
+        "trigger",
+        1.2,
+        debounce_ms=1000,
+        is_trigger=True,
+        header_ctx={"h": 1},
+        flush_cb=cb,
+    )
 
     scheduler.fire_last()
     assert flushed == [(["recent", "trigger"], {"h": 1})]
@@ -68,10 +89,24 @@ def test_pretrigger_within_window_included_older_trimmed():
 def test_nontrigger_messages_dont_start_batch():
     mgr, scheduler = _make_manager()
     flushed = []
-    mgr.add_message(KEY, "a", 0.0, debounce_ms=1000, is_trigger=False,
-                    header_ctx=None, flush_cb=lambda b, c: flushed.append(b))
-    mgr.add_message(KEY, "b", 0.1, debounce_ms=1000, is_trigger=False,
-                    header_ctx=None, flush_cb=lambda b, c: flushed.append(b))
+    mgr.add_message(
+        KEY,
+        "a",
+        0.0,
+        debounce_ms=1000,
+        is_trigger=False,
+        header_ctx=None,
+        flush_cb=lambda b, c: flushed.append(b),
+    )
+    mgr.add_message(
+        KEY,
+        "b",
+        0.1,
+        debounce_ms=1000,
+        is_trigger=False,
+        header_ctx=None,
+        flush_cb=lambda b, c: flushed.append(b),
+    )
     # No batch active → no timer scheduled.
     assert scheduler.calls == []
     # flush() on an inactive key is a no-op.
@@ -82,23 +117,51 @@ def test_nontrigger_messages_dont_start_batch():
 def test_second_trigger_keeps_first_header():
     mgr, scheduler = _make_manager()
     flushed = []
-    mgr.add_message(KEY, "t1", 0.0, debounce_ms=1000, is_trigger=True,
-                    header_ctx="first", flush_cb=lambda b, c: flushed.append((b, c)))
-    mgr.add_message(KEY, "t2", 0.3, debounce_ms=1000, is_trigger=True,
-                    header_ctx="second", flush_cb=lambda b, c: flushed.append((b, c)))
+    mgr.add_message(
+        KEY,
+        "t1",
+        0.0,
+        debounce_ms=1000,
+        is_trigger=True,
+        header_ctx="first",
+        flush_cb=lambda b, c: flushed.append((b, c)),
+    )
+    mgr.add_message(
+        KEY,
+        "t2",
+        0.3,
+        debounce_ms=1000,
+        is_trigger=True,
+        header_ctx="second",
+        flush_cb=lambda b, c: flushed.append((b, c)),
+    )
     scheduler.fire_last()
     assert flushed == [(["t1", "t2"], "first")]
 
 
 def test_rolling_message_reschedules_fire_time():
     mgr, scheduler = _make_manager()
-    mgr.add_message(KEY, "t1", 0.0, debounce_ms=1000, is_trigger=True,
-                    header_ctx=None, flush_cb=lambda b, c: None)
+    mgr.add_message(
+        KEY,
+        "t1",
+        0.0,
+        debounce_ms=1000,
+        is_trigger=True,
+        header_ctx=None,
+        flush_cb=lambda b, c: None,
+    )
     first_handle = scheduler.calls[-1][2]
     # A new (non-trigger) message while active reschedules: old handle cancelled,
     # a fresh timer scheduled.
-    mgr.add_message(KEY, "m2", 0.5, debounce_ms=1000, is_trigger=False,
-                    header_ctx=None, flush_cb=lambda b, c: None)
+    mgr.add_message(
+        KEY,
+        "m2",
+        0.5,
+        debounce_ms=1000,
+        is_trigger=False,
+        header_ctx=None,
+        flush_cb=lambda b, c: None,
+    )
     assert first_handle.cancelled is True
     assert len(scheduler.active_calls) == 1
 
@@ -106,8 +169,15 @@ def test_rolling_message_reschedules_fire_time():
 def test_flush_clears_batch_for_key():
     mgr, scheduler = _make_manager()
     flushed = []
-    mgr.add_message(KEY, "t1", 0.0, debounce_ms=1000, is_trigger=True,
-                    header_ctx=None, flush_cb=lambda b, c: flushed.append(b))
+    mgr.add_message(
+        KEY,
+        "t1",
+        0.0,
+        debounce_ms=1000,
+        is_trigger=True,
+        header_ctx=None,
+        flush_cb=lambda b, c: flushed.append(b),
+    )
     scheduler.fire_last()
     # State cleared; firing again does nothing and a new message starts fresh.
     scheduler.fire_last()
@@ -121,10 +191,24 @@ def test_keys_isolated():
     def cb_for(name):
         return lambda b, c: flushed.__setitem__(name, b)
 
-    mgr.add_message(("inst", 1), "a1", 0.0, debounce_ms=1000, is_trigger=True,
-                    header_ctx=None, flush_cb=cb_for("k1"))
-    mgr.add_message(("inst", 2), "b1", 0.0, debounce_ms=1000, is_trigger=True,
-                    header_ctx=None, flush_cb=cb_for("k2"))
+    mgr.add_message(
+        ("inst", 1),
+        "a1",
+        0.0,
+        debounce_ms=1000,
+        is_trigger=True,
+        header_ctx=None,
+        flush_cb=cb_for("k1"),
+    )
+    mgr.add_message(
+        ("inst", 2),
+        "b1",
+        0.0,
+        debounce_ms=1000,
+        is_trigger=True,
+        header_ctx=None,
+        flush_cb=cb_for("k2"),
+    )
     # Fire both scheduled timers.
     scheduler.calls[0][1]()
     scheduler.calls[1][1]()
@@ -136,13 +220,31 @@ def test_clock_used_when_now_omitted():
     ticks = iter([10.0, 10.4, 11.5])
     mgr = DebounceManager(clock=lambda: next(ticks), scheduler=scheduler)
     flushed = []
-    mgr.add_message(KEY, "old", debounce_ms=1000, is_trigger=False,
-                    header_ctx=None, flush_cb=lambda b, c: flushed.append(b))
-    mgr.add_message(KEY, "recent", debounce_ms=1000, is_trigger=False,
-                    header_ctx=None, flush_cb=lambda b, c: flushed.append(b))
+    mgr.add_message(
+        KEY,
+        "old",
+        debounce_ms=1000,
+        is_trigger=False,
+        header_ctx=None,
+        flush_cb=lambda b, c: flushed.append(b),
+    )
+    mgr.add_message(
+        KEY,
+        "recent",
+        debounce_ms=1000,
+        is_trigger=False,
+        header_ctx=None,
+        flush_cb=lambda b, c: flushed.append(b),
+    )
     # trigger at clock=11.5, cutoff=10.5 → "old"(10.0) trimmed, "recent"(10.4) trimmed too
-    mgr.add_message(KEY, "trigger", debounce_ms=1000, is_trigger=True,
-                    header_ctx=None, flush_cb=lambda b, c: flushed.append(b))
+    mgr.add_message(
+        KEY,
+        "trigger",
+        debounce_ms=1000,
+        is_trigger=True,
+        header_ctx=None,
+        flush_cb=lambda b, c: flushed.append(b),
+    )
     scheduler.fire_last()
     assert flushed == [["trigger"]]
 
@@ -158,10 +260,17 @@ async def test_async_timer_flushes_once_in_order():
     async def cb(batch, ctx):
         flushed.append((list(batch), ctx))
 
-    mgr.add_message(KEY, "ctx", debounce_ms=20, is_trigger=False,
-                    header_ctx=None, flush_cb=cb)
-    mgr.add_message(KEY, "trigger", debounce_ms=20, is_trigger=True,
-                    header_ctx={"h": 1}, flush_cb=cb)
+    mgr.add_message(
+        KEY, "ctx", debounce_ms=20, is_trigger=False, header_ctx=None, flush_cb=cb
+    )
+    mgr.add_message(
+        KEY,
+        "trigger",
+        debounce_ms=20,
+        is_trigger=True,
+        header_ctx={"h": 1},
+        flush_cb=cb,
+    )
     await asyncio.sleep(0.05)
     assert flushed == [(["ctx", "trigger"], {"h": 1})]
 
@@ -174,12 +283,14 @@ async def test_async_new_message_delays_flush():
     async def cb(batch, ctx):
         flushed.append(list(batch))
 
-    mgr.add_message(KEY, "trigger", debounce_ms=40, is_trigger=True,
-                    header_ctx=None, flush_cb=cb)
+    mgr.add_message(
+        KEY, "trigger", debounce_ms=40, is_trigger=True, header_ctx=None, flush_cb=cb
+    )
     await asyncio.sleep(0.02)  # before expiry
     assert flushed == []  # not flushed yet
-    mgr.add_message(KEY, "later", debounce_ms=40, is_trigger=False,
-                    header_ctx=None, flush_cb=cb)
+    mgr.add_message(
+        KEY, "later", debounce_ms=40, is_trigger=False, header_ctx=None, flush_cb=cb
+    )
     await asyncio.sleep(0.02)  # would have fired if not rescheduled
     assert flushed == []
     await asyncio.sleep(0.04)  # now silence has elapsed

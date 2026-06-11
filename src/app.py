@@ -14,6 +14,7 @@ from .config import (
     load_instances,
     parse_proxy,
 )
+from .debounce import DebounceManager
 from .prompts import Prompt, match_prompt
 from .seen_chats import seen_chats
 from .stats import stats as global_stats
@@ -41,6 +42,10 @@ langfuse = None
 
 # Use shared stats tracker
 stats = global_stats
+
+# Per-instance/chat debounce batching (Feature B). Shared across all instances;
+# keyed by (instance_name, chat_id) so instances and chats stay isolated.
+debounce_manager = DebounceManager()
 
 NEGATIVE_REACTIONS = {"👎"}  # thumbs down
 POSITIVE_REACTIONS = {"👍"}  # thumbs up
@@ -167,6 +172,78 @@ async def _forward_messages(
         await webhook.send_webhook(inst.target_webhook, trigger_message)
 
 
+async def _debounce_message(
+    inst: Instance,
+    chat_id: int,
+    message,
+    *,
+    forward: bool,
+    used_word: str | None,
+    used_prompt: Prompt | None,
+    used_score: int,
+    used_quote: str | None,
+    used_reasoning: str | None,
+    used_trace_id: str | None,
+) -> None:
+    """Buffer ``message`` for debounced delivery (Feature B).
+
+    Every message reaching this stage is buffered. A trigger (``forward`` True)
+    activates the per-``(instance, chat)`` batch and captures the header context;
+    after ``debounce_ms`` of silence the whole batch is delivered via
+    :func:`_forward_messages` and the trigger's ``forwarded=True`` stats fire then.
+    Non-trigger messages keep their immediate ``forwarded=False`` stats increment.
+    """
+
+    key = (inst.name, chat_id)
+    header_ctx = {
+        "trigger_message": message,
+        "used_word": used_word,
+        "used_prompt": used_prompt,
+        "used_score": used_score,
+        "used_quote": used_quote,
+        "used_reasoning": used_reasoning,
+        "used_trace_id": used_trace_id,
+    }
+
+    async def flush_cb(batch: list, ctx: dict) -> None:
+        await _forward_messages(
+            inst,
+            batch,
+            trigger_message=ctx["trigger_message"],
+            used_word=ctx["used_word"],
+            used_prompt=ctx["used_prompt"],
+            used_score=ctx["used_score"],
+            used_quote=ctx["used_quote"],
+            used_reasoning=ctx["used_reasoning"],
+            used_trace_id=ctx["used_trace_id"],
+        )
+        stats.increment(
+            inst.name,
+            forwarded=True,
+            used_word=ctx["used_word"] is not None,
+            used_prompt=ctx["used_prompt"] is not None,
+        )
+
+    debounce_manager.add_message(
+        key,
+        message,
+        debounce_ms=inst.debounce_ms,
+        is_trigger=forward,
+        header_ctx=header_ctx,
+        flush_cb=flush_cb,
+    )
+
+    # Trigger side effects (forwarded stats, webhook, trace) are deferred to the
+    # flush above; non-trigger messages still count immediately as not forwarded.
+    if not forward:
+        stats.increment(
+            inst.name,
+            forwarded=False,
+            used_word=used_word is not None,
+            used_prompt=used_prompt is not None,
+        )
+
+
 async def process_message(inst: Instance, event: events.NewMessage.Event) -> None:
     """Handle a new message for a specific instance."""
     message = event.message
@@ -212,8 +289,8 @@ async def process_message(inst: Instance, event: events.NewMessage.Event) -> Non
                 if sc >= (p.threshold or 4):
                     forward = True
                     break
+    chat_id = getattr(event, "chat_id", None)
     if forward and inst.once_per_chat:
-        chat_id = getattr(event, "chat_id", None)
         if chat_id is not None:
             now = datetime.now()
             if seen_chats.should_forward(inst.name, chat_id, now, inst.reset_hour):
@@ -226,6 +303,22 @@ async def process_message(inst: Instance, event: events.NewMessage.Event) -> Non
                     chat_id,
                 )
                 forward = False
+
+    if inst.debounce_ms > 0 and chat_id is not None:
+        await _debounce_message(
+            inst,
+            chat_id,
+            message,
+            forward=forward,
+            used_word=used_word,
+            used_prompt=used_prompt,
+            used_score=used_score,
+            used_quote=used_quote,
+            used_reasoning=used_reasoning,
+            used_trace_id=used_trace_id,
+        )
+        return
+
     if forward:
         await _forward_messages(
             inst,

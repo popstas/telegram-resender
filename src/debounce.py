@@ -98,7 +98,24 @@ class DebounceManager:
 
         result = self.flush(key, flush_cb)
         if asyncio.iscoroutine(result):
-            asyncio.ensure_future(result)
+            task = asyncio.ensure_future(result)
+            task.add_done_callback(self._log_flush_exception)
+
+    @staticmethod
+    def _log_flush_exception(task: "asyncio.Future") -> None:
+        """Surface exceptions from a fire-and-forget debounce flush.
+
+        The flush coroutine runs detached from any awaiter, so without this an
+        exception (e.g. a webhook send failing outside the forward try/except)
+        would only show up as asyncio's GC-time "exception was never retrieved"
+        warning, with no app-level log.
+        """
+
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            logger.error("Debounce flush failed: %s", exc)
 
     def flush(self, key: Hashable, flush_cb: Callable[[list, Any], Any]) -> Any:
         """Deliver the ordered batch for ``key`` via ``flush_cb`` and clear it.

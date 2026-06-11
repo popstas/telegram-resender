@@ -21,6 +21,24 @@ instances:
         username: "@example_updates_bot"
     folder_mute: false
     no_forward_message: false
+    # Forward only the first match per chat per day, then suppress further
+    # matches in that chat until the daily reset hour. State persists across
+    # restarts in data/seen_chats.json. Default: false (forward every match).
+    once_per_chat: false
+    # Local server hour (0-23) at which once_per_chat re-arms each chat.
+    # Default: 6 (06:00). Ignored when once_per_chat is false.
+    reset_hour: 6
+    # Debounce batching in milliseconds. When > 0, a trigger does not forward
+    # immediately; instead the instance keeps a rolling per-chat buffer of recent
+    # messages and, after debounce_ms of silence, forwards the whole batch under
+    # a single match header (capturing context before and after the trigger).
+    # Each new message (any sender) resets the timer. Default: 0 (forward now).
+    # Example timeline with debounce_ms: 60000 (60s):
+    #   10:00:00  "anyone around?"          -> buffered (pre-trigger context)
+    #   10:00:30  "my username, help!"      -> trigger, batch starts, timer set
+    #   10:00:50  "actually figured it out" -> buffered, timer reset
+    #   10:01:50  (60s of silence elapsed)  -> all three forwarded together
+    debounce_ms: 0
     # Optional per-instance override of the global `ignore_usernames`.
     # If set (even to an empty list), this instance ignores the global list
     # and uses this one. If omitted, the global `ignore_usernames` applies.

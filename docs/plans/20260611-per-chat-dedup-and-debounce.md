@@ -80,15 +80,15 @@ unaffected.
 - [x] run `pytest` — must pass before next task.
 
 ### Task 2: Add config fields `once_per_chat`, `reset_hour`, `debounce_ms`
-- [ ] add `once_per_chat: bool = False`, `reset_hour: int = 6`,
+- [x] add `once_per_chat: bool = False`, `reset_hour: int = 6`,
       `debounce_ms: int = 0` to `Instance` in `src/config.py`.
-- [ ] parse them in `load_instances` with validation: `0 <= reset_hour <= 23`,
+- [x] parse them in `load_instances` with validation: `0 <= reset_hour <= 23`,
       `debounce_ms >= 0` (raise `ValueError` otherwise).
-- [ ] document the three fields in `config-example.yml` with comments + the
+- [x] document the three fields in `config-example.yml` with comments + the
       debounce example timeline.
-- [ ] write tests: defaults when omitted; values parsed; `ValueError` on out-of-range
+- [x] write tests: defaults when omitted; values parsed; `ValueError` on out-of-range
       `reset_hour` and negative `debounce_ms`.
-- [ ] run `pytest` — must pass before next task.
+- [x] run `pytest` — must pass before next task.
 
 ### Task 3: Extract reusable forward helper + integrate `once_per_chat`
 - [ ] refactor the forward side-effect block in `process_message`

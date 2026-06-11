@@ -1267,6 +1267,60 @@ async def test_debounce_with_once_per_chat_suppressed_trigger_buffers(
 
 
 @pytest.mark.asyncio
+async def test_missing_chat_id_skips_dedup_and_debounce(
+    monkeypatch, dummy_message_cls, tmp_path
+):
+    """An event without chat_id forwards immediately, bypassing both features."""
+    from datetime import datetime
+
+    import src.seen_chats as seen_chats_module
+    from src.debounce import DebounceManager
+
+    class DummyClient:
+        async def send_message(self, *a, **k):
+            pass
+
+    app.client = DummyClient()
+    tgu.client = app.client
+    app.stats = stats_module.StatsTracker(
+        str(tmp_path / "stats.json"), flush_interval=0
+    )
+
+    store = seen_chats_module.SeenChatStore(str(tmp_path / "seen.json"))
+    monkeypatch.setattr(app, "seen_chats", store)
+    monkeypatch.setattr(
+        app, "datetime", SimpleNamespace(now=lambda: datetime(2026, 6, 11, 12, 0, 0))
+    )
+
+    async def fake_text(message, **kwargs):
+        return "HEADER"
+
+    async def fake_get_chat_name(v, safe=False):
+        return "name"
+
+    monkeypatch.setattr(app, "get_forward_message_text", fake_text)
+    monkeypatch.setattr(app, "get_chat_name", fake_get_chat_name)
+
+    scheduler = _FakeScheduler()
+    mgr = DebounceManager(clock=lambda: 0.0, scheduler=scheduler)
+    monkeypatch.setattr(app, "debounce_manager", mgr)
+
+    # Both features enabled, but the event has no resolvable chat_id.
+    inst = app.Instance(
+        name="d", words=["hi"], target_chat=1, once_per_chat=True, debounce_ms=1000
+    )
+
+    m1 = dummy_message_cls(SimpleNamespace(channel_id=1), msg_id=1, text="hi")
+    await app.process_message(inst, SimpleNamespace(message=m1, chat_id=None))
+
+    # Forwarded immediately, nothing buffered, nothing recorded.
+    assert m1.forwarded == [1]
+    assert scheduler.calls == []
+    assert mgr._states == {}
+    assert store.data == {}
+
+
+@pytest.mark.asyncio
 async def test_negative_words(
     monkeypatch, dummy_tg_client, dummy_message_cls, tmp_path
 ):

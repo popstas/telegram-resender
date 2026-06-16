@@ -34,9 +34,14 @@ def dummy_tg_client():
             self.on_handler = None
             self.sent = []
             self.started = False
+            self.dialogs_warmed = False
 
         async def start(self):
             self.started = True
+
+        async def get_dialogs(self, *args, **kwargs):
+            self.dialogs_warmed = True
+            return []
 
         def on(self, event):  # noqa: D401 - same interface as telethon
             def deco(func):

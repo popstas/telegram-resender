@@ -319,6 +319,24 @@ async def to_event_chat_id(peer) -> int | None:
     return None
 
 
+async def warm_entity_cache() -> None:
+    """Cache dialog entities so bare user/chat IDs resolve to input entities.
+
+    Folder ``include_peers`` and config ``chat_ids`` arrive as bare IDs with no
+    ``access_hash``; Telethon can only resolve those if it has seen them before.
+    One ``get_dialogs()`` pass at startup caches their ``access_hash``,
+    preventing "Could not find the input entity for PeerUser" errors and the
+    ``-user_id`` fallback in :func:`to_event_chat_id` that breaks private-chat
+    matching. Resilient by design: a failure here must never crash startup.
+    """
+
+    try:
+        await client.get_dialogs()
+        logger.info("Warmed entity cache from dialogs")
+    except Exception as exc:  # pylint: disable=broad-except
+        logger.warning("Failed to warm entity cache from dialogs: %s", exc)
+
+
 async def normalize_chat_ids(ids: Set[int]) -> Set[int]:
     """Normalize a set of chat IDs to ``event.chat_id`` format."""
     result = set()

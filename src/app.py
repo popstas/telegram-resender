@@ -461,6 +461,7 @@ async def main() -> None:
     client = TelegramClient(session_name, api_id, api_hash, proxy=proxy)
     telegram_utils.client = client
     await client.start()
+    await telegram_utils.warm_entity_cache()
 
     prompts.stats = stats
 

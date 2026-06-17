@@ -9,6 +9,10 @@ All notable changes to this project are documented here.
 
 - Add git-cliff changelog generation and release workflow
 
+### Miscellaneous
+
+- Rename project to telegram-resender
+
 ## v0.2.0 - 2026-06-17
 
 ### Features

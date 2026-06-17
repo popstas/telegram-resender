@@ -2,8 +2,17 @@
 
 [![Coverage Status](https://coveralls.io/repos/github/popstas/telegram-resender/badge.svg?branch=main)](https://coveralls.io/github/popstas/telegram-resender?branch=main)
 
-This project listens to mentions in specified Telegram chats and forwards
-matching messages to a target chat.
+A Telegram client (built on [Telethon](https://github.com/LonamiWebs/Telethon),
+running under your own user account — not a Bot API bot) that watches chats,
+channels, and folders, then forwards matching messages to a target chat, topic,
+or webhook.
+
+**Triggers:** word lists (with negative/ignore words), OpenAI prompt matches, and
+👍/👎 reactions (forwarding to true/false-positive chats).
+
+**Actions:** forward with a link back to the source message (and a short reason
+and quote for prompt matches), auto-create forum topics for folder chats,
+debounce batching, once-per-chat dedup, and Langfuse tracing.
 
 # Features
 
@@ -109,7 +118,7 @@ start a batch, but messages still buffer for any active batch. Messages without 
 resolvable chat ID bypass both features and forward immediately.
 
 `folder_add_topic` is a list of topics that should exist in every chat inside the
-instance folders. When a topic is missing, the bot will create it, send an
+instance folders. When a topic is missing, the client will create it, send an
 optional activation message inside the new thread, and invite an optional
 `username` to the chat.
 
@@ -243,7 +252,7 @@ configuration and forces JSON responses that match the `EvaluateResult` schema.
 Set `langfuse_public_key` and `langfuse_secret_key` in the config to enable
 tracing with [Langfuse](https://langfuse.com). Optionally specify
 `langfuse_base_url` if using a self-hosted instance.
-The bot uses the Langfuse OpenAI integration, so all OpenAI calls are
+The client uses the Langfuse OpenAI integration, so all OpenAI calls are
 automatically traced. Each request is tagged with the instance name and chat
 name to make debugging easier.
 

@@ -7,12 +7,18 @@ All notable changes to this project are documented here.
 
 ### Features
 
+- Document configurable forward message and debounce cancel
 - Verify acceptance criteria for configurable message and debounce cancel
 - Cancel debounce batch on owner reply in handler
 - Add DebounceManager.cancel to drop pending batch
 - Thread instance config into the forward path
 - Render configurable forwarded-message preface in telegram_utils
 - Add config fields, parsing, and validation for forward message and cancel-on-owner-reply
+
+### Bug Fixes
+
+- Address codex review findings
+- review: Validate message_template and guard empty preface
 
 ### Documentation
 

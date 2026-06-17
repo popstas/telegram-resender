@@ -127,14 +127,14 @@ shouldn't be forwarded once the owner has already engaged the conversation.
 - [x] run `pytest` - must pass before next task
 
 ### Task 5: Wire cancel-on-owner-reply into the handler
-- [ ] in `src/app.py` ignore branch (≈ lines 507–511), before `continue`: when the sender
+- [x] in `src/app.py` ignore branch (≈ lines 507–511), before `continue`: when the sender
       is in the effective ignore list AND `inst.cancel_on_owner_reply` AND `inst.debounce_ms > 0`,
       call `debounce_manager.cancel((inst.name, event.chat_id))`
-- [ ] keep per-instance semantics (only the matching instance's batch is cancelled)
-- [ ] write tests (success): ignored user during window drops the batch (nothing forwarded)
-- [ ] write tests (edge): `cancel_on_owner_reply=False` does not cancel; non-ignored user
+- [x] keep per-instance semantics (only the matching instance's batch is cancelled)
+- [x] write tests (success): ignored user during window drops the batch (nothing forwarded)
+- [x] write tests (edge): `cancel_on_owner_reply=False` does not cancel; non-ignored user
       does not cancel; `debounce_ms=0` path unaffected
-- [ ] run `pytest` - must pass before next task
+- [x] run `pytest` - must pass before next task
 
 ### Task 6: Verify acceptance criteria
 - [ ] verify all Overview requirements implemented (template, flags, prefix/suffix,

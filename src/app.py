@@ -513,6 +513,12 @@ async def main() -> None:
                 logger.debug(
                     "Ignoring message from @%s for instance %s", username, inst.name
                 )
+                if (
+                    inst.cancel_on_owner_reply
+                    and inst.debounce_ms > 0
+                    and event.chat_id is not None
+                ):
+                    debounce_manager.cancel((inst.name, event.chat_id))
                 continue
             if not username and effective_ignore:
                 logger.debug(

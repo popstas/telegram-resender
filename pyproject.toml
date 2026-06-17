@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "telegram-mention-resender"
-version = "0.1.0"
+version = "0.2.0"
 description = "Listens to mentions in specified Telegram chats and forwards matching messages to a target chat"
 readme = "README.md"
 license = {file = "LICENSE"}

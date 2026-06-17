@@ -21,6 +21,23 @@ instances:
         username: "@example_updates_bot"
     folder_mute: false
     no_forward_message: false
+    # Configurable forwarded-message preface (sent before each forwarded message).
+    # With none of the keys below set, output is identical to the default:
+    #   word: my username
+    #
+    #   Forwarded from: private @username, Name: User Name
+    # no_forward_message: true suppresses the preface entirely and wins over these.
+    #
+    # Option 1 - full template (overrides the layout). Placeholders render missing
+    # values as "" and never raise: {trigger}, {source}, {username}, {name}, {chat}.
+    # message_template: "{trigger}\n{source}"
+    #
+    # Option 2 - flags + wrap (used only when message_template is absent):
+    # forward_message:
+    #   show_trigger: true   # include the match reason ({trigger})
+    #   show_source: true    # include the "Forwarded from: ..." line ({source})
+    #   prefix: ""           # free text prepended to the preface
+    #   suffix: ""           # free text appended to the preface
     # Forward only the first match per chat per day, then suppress further
     # matches in that chat until the daily reset hour. State persists across
     # restarts in data/seen_chats.json. Default: false (forward every match).
@@ -39,6 +56,11 @@ instances:
     #   10:00:50  "actually figured it out" -> buffered, timer reset
     #   10:01:50  (60s of silence elapsed)  -> all three forwarded together
     debounce_ms: 0
+    # When debounce_ms > 0 and an ignored username (account owner, from
+    # ignore_usernames / ignore_usernames_override) posts during the debounce
+    # window, drop the accumulated batch and forward nothing. Default: true
+    # (opt-out). No effect when debounce_ms is 0.
+    cancel_on_owner_reply: true
     # Optional per-instance override of the global `ignore_usernames`.
     # If set (even to an empty list), this instance ignores the global list
     # and uses this one. If omitted, the global `ignore_usernames` applies.

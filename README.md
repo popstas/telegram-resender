@@ -51,7 +51,8 @@ pip install -r requirements.txt
 - `instances` – list of monitoring instances. Each instance may contain
   `folders`, `chat_ids`, `entities`, `words`, `negative_words`, `ignore_words`, `target_chat`,
   `target_entity`, `target_webhook`, `folder_mute`, `folder_add_topic`, `false_positive_entity`, `true_positive_entity`,
-  `no_forward_message`, `once_per_chat`, `reset_hour`, `debounce_ms` and `ignore_usernames_override`.
+  `no_forward_message`, `once_per_chat`, `reset_hour`, `debounce_ms`, `ignore_usernames_override`,
+  `message_template`, `forward_message` and `cancel_on_owner_reply`.
 - `ignore_usernames_override` (per instance) – if defined, this instance ignores the
   global `ignore_usernames` and uses its own list instead. An empty list (`[]`) means
   the instance ignores no usernames. Omit the key to inherit the global list.
@@ -116,6 +117,90 @@ instances:
 `once_per_chat` and `debounce_ms` can be combined: a suppressed trigger does not
 start a batch, but messages still buffer for any active batch. Messages without a
 resolvable chat ID bypass both features and forward immediately.
+
+### Cancel a debounce batch when you reply (`cancel_on_owner_reply`)
+
+When `debounce_ms > 0` and one of the ignored usernames (the account owner, from
+the global `ignore_usernames` or the per-instance `ignore_usernames_override`)
+posts in the chat during the debounce window, the accumulated batch is dropped and
+**nothing is forwarded** — the conversation is considered already handled.
+
+This is gated by `cancel_on_owner_reply`, which defaults to `true` (opt-out). Set
+it to `false` to keep delivering the batch even after you reply. It has no effect
+when `debounce_ms` is `0`.
+
+```yaml
+instances:
+  - name: Conversation batcher
+    chat_ids: [-1001234567890]
+    words: ["my username"]
+    debounce_ms: 60000
+    cancel_on_owner_reply: true   # default; set false to always deliver
+```
+
+## Configurable forwarded message
+
+Before each forwarded message the bot sends a preface describing *why* the message
+matched and *where* it came from. By default this is the historical layout:
+
+```
+word: my username
+
+Forwarded from: private @username, Name: User Name
+```
+
+This preface is configurable per instance, which is useful when the target is an
+agent (e.g. Hermes) that needs the source details in a specific shape. **With no
+new config the output is byte-identical to the default above.**
+
+`no_forward_message: true` still suppresses the preface entirely and takes
+precedence over every option below.
+
+### Option 1 — full template (`message_template`)
+
+Set `message_template` to a string with placeholders. When present it overrides
+the layout completely. Available placeholders (unknown placeholders and missing
+values render as an empty string, never an error):
+
+- `{trigger}` – the match reason (e.g. `word: my username` or `prompt name: 4/5`).
+- `{source}` – the full `Forwarded from: …` source line.
+- `{username}` – the sender `@username` (or empty).
+- `{name}` – the sender full name (or empty).
+- `{chat}` – the chat title/type.
+
+```yaml
+instances:
+  - name: Hermes feed
+    words: ["my username"]
+    message_template: "{trigger}\n{source}"
+```
+
+### Option 2 — flags + wrap (`forward_message`)
+
+When `message_template` is absent, the preface is assembled from the
+`forward_message` block:
+
+- `show_trigger` (default `true`) – include the match reason.
+- `show_source` (default `true`) – include the `Forwarded from: …` line.
+- `prefix` (default `""`) – free text prepended to the preface.
+- `suffix` (default `""`) – free text appended to the preface.
+
+With both `show_trigger` and `show_source` enabled the original
+`{trigger}\n\n{source}` spacing is preserved.
+
+```yaml
+instances:
+  - name: Source only
+    words: ["my username"]
+    forward_message:
+      show_trigger: false
+      show_source: true
+      prefix: "🔔 "
+      suffix: ""
+```
+
+Precedence: `no_forward_message` → suppress; else `message_template` if set; else
+the `forward_message` flags with `prefix`/`suffix`.
 
 `folder_add_topic` is a list of topics that should exist in every chat inside the
 instance folders. When a topic is missing, the client will create it, send an

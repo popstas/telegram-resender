@@ -144,11 +144,12 @@ shouldn't be forwarded once the owner has already engaged the conversation.
 - [x] verify coverage meets project standard (80%+) (total 87%)
 
 ### Task 7: Update documentation
-- [ ] update `README.md` with the new instance options + examples
-- [ ] update `config-example.yml` with `message_template`, `forward_message` block, and
+- [x] update `README.md` with the new instance options + examples
+- [x] update `config-example.yml` with `message_template`, `forward_message` block, and
       `cancel_on_owner_reply`
-- [ ] update `AGENTS.md` only if module structure/responsibilities changed
-- [ ] check off the two items in `docs/TODO.md`
+- [x] update `AGENTS.md` only if module structure/responsibilities changed (N/A - no new
+      modules; both features extend existing files, so structure is unchanged)
+- [x] check off the two items in `docs/TODO.md`
 
 ## Technical Details
 

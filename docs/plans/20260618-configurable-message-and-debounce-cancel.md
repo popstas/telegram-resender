@@ -73,22 +73,23 @@ shouldn't be forwarded once the owner has already engaged the conversation.
 ## Implementation Steps
 
 ### Task 1: Add config fields, parsing, and validation
-- [ ] add `Instance` fields in `src/config.py`: `message_template: str | None = None`,
+- [x] add `Instance` fields in `src/config.py`: `message_template: str | None = None`,
       `forward_message_show_trigger: bool = True`, `forward_message_show_source: bool = True`,
       `forward_message_prefix: str = ""`, `forward_message_suffix: str = ""`,
       `cancel_on_owner_reply: bool = True`
-- [ ] parse them in the instance builder: read scalar `message_template`; read the nested
+- [x] parse them in the instance builder: read scalar `message_template`; read the nested
       `forward_message:` block (`show_trigger`, `show_source`, `prefix`, `suffix`) into the
       flat fields; read `cancel_on_owner_reply`
-- [ ] validate types: `message_template` must be str-or-absent; the four `forward_message`
+- [x] validate types: `message_template` must be str-or-absent; the four `forward_message`
       sub-keys must be bool/str respectively; `cancel_on_owner_reply` must be bool
       (raise `ValueError` with a clear message, mirroring `debounce_ms` validation)
-- [ ] update `generate_config` to emit the new keys with their defaults/comments
-- [ ] write tests (success): defaults applied when absent; template parsed; flags + prefix
+- [x] update `generate_config` to emit the new keys with their defaults/comments (N/A - no
+      `generate_config` function exists in this Python codebase; config is hand-written YAML)
+- [x] write tests (success): defaults applied when absent; template parsed; flags + prefix
       + suffix parsed from nested block; `cancel_on_owner_reply` parsed
-- [ ] write tests (error/edge): wrong types for template/flags/prefix/`cancel_on_owner_reply`
+- [x] write tests (error/edge): wrong types for template/flags/prefix/`cancel_on_owner_reply`
       raise `ValueError`
-- [ ] run `pytest` - must pass before next task
+- [x] run `pytest` - must pass before next task
 
 ### Task 2: Render configurable preface in telegram_utils
 - [ ] extract granular source fields in `src/telegram_utils.py` so `{username}`, `{name}`,

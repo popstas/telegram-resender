@@ -7,6 +7,8 @@ All notable changes to this project are documented here.
 
 ### Documentation
 
+- Add plan for configurable forward message + debounce cancel-on-owner-reply
+- Update pyproject description to match new project scope
 - Clarify project is a Telethon client and describe triggers/actions
 
 ### Build

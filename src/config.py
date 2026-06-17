@@ -50,6 +50,12 @@ class Instance:
     once_per_chat: bool = False
     reset_hour: int = 6
     debounce_ms: int = 0
+    message_template: str | None = None
+    forward_message_show_trigger: bool = True
+    forward_message_show_source: bool = True
+    forward_message_prefix: str = ""
+    forward_message_suffix: str = ""
+    cancel_on_owner_reply: bool = True
     prompts: List[Prompt] = field(default_factory=list)
     folder_add_topic: List[FolderTopic] = field(default_factory=list)
 
@@ -188,6 +194,48 @@ async def load_instances(config: dict) -> List[Instance]:
         if debounce_ms < 0:
             raise ValueError(f"debounce_ms must be >= 0, got {debounce_ms!r}")
 
+        message_template = inst_cfg.get("message_template")
+        if message_template is not None and not isinstance(message_template, str):
+            raise ValueError(
+                f"message_template must be a string, got {message_template!r}"
+            )
+
+        fm_cfg = inst_cfg.get("forward_message", {})
+        if fm_cfg is None:
+            fm_cfg = {}
+        if not isinstance(fm_cfg, dict):
+            raise ValueError(f"forward_message must be a mapping, got {fm_cfg!r}")
+
+        fm_show_trigger = fm_cfg.get("show_trigger", True)
+        if not isinstance(fm_show_trigger, bool):
+            raise ValueError(
+                "forward_message.show_trigger must be a boolean, "
+                f"got {fm_show_trigger!r}"
+            )
+        fm_show_source = fm_cfg.get("show_source", True)
+        if not isinstance(fm_show_source, bool):
+            raise ValueError(
+                "forward_message.show_source must be a boolean, "
+                f"got {fm_show_source!r}"
+            )
+        fm_prefix = fm_cfg.get("prefix", "")
+        if not isinstance(fm_prefix, str):
+            raise ValueError(
+                f"forward_message.prefix must be a string, got {fm_prefix!r}"
+            )
+        fm_suffix = fm_cfg.get("suffix", "")
+        if not isinstance(fm_suffix, str):
+            raise ValueError(
+                f"forward_message.suffix must be a string, got {fm_suffix!r}"
+            )
+
+        cancel_on_owner_reply = inst_cfg.get("cancel_on_owner_reply", True)
+        if not isinstance(cancel_on_owner_reply, bool):
+            raise ValueError(
+                "cancel_on_owner_reply must be a boolean, "
+                f"got {cancel_on_owner_reply!r}"
+            )
+
         instance = Instance(
             name=inst_cfg.get("name", "instance"),
             folders=inst_cfg.get("folders", []),
@@ -211,6 +259,12 @@ async def load_instances(config: dict) -> List[Instance]:
             once_per_chat=inst_cfg.get("once_per_chat", False),
             reset_hour=reset_hour,
             debounce_ms=debounce_ms,
+            message_template=message_template,
+            forward_message_show_trigger=fm_show_trigger,
+            forward_message_show_source=fm_show_source,
+            forward_message_prefix=fm_prefix,
+            forward_message_suffix=fm_suffix,
+            cancel_on_owner_reply=cancel_on_owner_reply,
             prompts=parsed_prompts,
             folder_add_topic=folder_topics,
         )

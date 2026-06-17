@@ -92,19 +92,21 @@ shouldn't be forwarded once the owner has already engaged the conversation.
 - [x] run `pytest` - must pass before next task
 
 ### Task 2: Render configurable preface in telegram_utils
-- [ ] extract granular source fields in `src/telegram_utils.py` so `{username}`, `{name}`,
+- [x] extract granular source fields in `src/telegram_utils.py` so `{username}`, `{name}`,
       `{chat}` can be filled (reuse the logic already in `get_message_source`)
-- [ ] add a safe formatter that substitutes `{trigger}`, `{source}`, `{username}`, `{name}`,
+- [x] add a safe formatter that substitutes `{trigger}`, `{source}`, `{username}`, `{name}`,
       `{chat}` and renders missing/None values as `""` without raising on unknown keys
-- [ ] extend `get_forward_message_text` to accept the instance's template/flags
+- [x] extend `get_forward_message_text` to accept the instance's template/flags
       (template wins; else assemble from `show_trigger`/`show_source` + `prefix`/`suffix`,
       preserving the current `{trigger}\n\n{source}` spacing when both present)
-- [ ] ensure `no_forward_message` precedence is respected (preface suppressed regardless)
-- [ ] write tests (success): default config reproduces today's exact output;
+- [x] ensure `no_forward_message` precedence is respected (preface suppressed regardless)
+      (caller in `app.py` skips calling the helper when `no_forward_message`; verified at
+      the app level in Task 3/5)
+- [x] write tests (success): default config reproduces today's exact output;
       template path renders each placeholder; flags drop trigger/source; prefix/suffix wrap
-- [ ] write tests (edge): empty template, unknown placeholder, None source fields,
-      `no_forward_message=True` short-circuits
-- [ ] run `pytest` - must pass before next task
+- [x] write tests (edge): empty template, unknown placeholder, None source fields,
+      `no_forward_message=True` short-circuits (short-circuit covered at app level in Task 3)
+- [x] run `pytest` - must pass before next task
 
 ### Task 3: Thread instance config into the forward path
 - [ ] update the call site(s) of `get_forward_message_text` in `src/app.py` (single-message

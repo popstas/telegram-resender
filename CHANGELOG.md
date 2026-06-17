@@ -5,6 +5,10 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+### Features
+
+- Add config fields, parsing, and validation for forward message and cancel-on-owner-reply
+
 ### Documentation
 
 - Add plan for configurable forward message + debounce cancel-on-owner-reply

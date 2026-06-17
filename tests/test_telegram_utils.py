@@ -72,3 +72,170 @@ async def test_to_event_chat_id_falls_back_when_unresolved(monkeypatch):
     result = await tgu.to_event_chat_id(898532232)
 
     assert result == -898532232
+
+
+def _make_private_message(username="alice", first="Alice", last="Smith"):
+    """Build a minimal private message for source-rendering tests."""
+    return SimpleNamespace(
+        id=10,
+        peer_id=types.PeerUser(user_id=555),
+        sender=SimpleNamespace(username=username, first_name=first, last_name=last),
+    )
+
+
+@pytest.mark.asyncio
+async def test_forward_message_default_matches_today(monkeypatch):
+    """With no template/flags, output is the byte-identical ``{reason}\\n\\n{source}``."""
+
+    async def fake_source(m):
+        return "Forwarded from: private @alice"
+
+    monkeypatch.setattr(tgu, "get_message_source", fake_source)
+
+    msg = _make_private_message()
+    text = await tgu.get_forward_message_text(msg, word="hello")
+
+    assert text == "word: hello\n\nForwarded from: private @alice"
+
+
+@pytest.mark.asyncio
+async def test_forward_message_default_no_reason(monkeypatch):
+    """No reason => just the source (no leading separators), as today."""
+
+    async def fake_source(m):
+        return "Forwarded from: private @alice"
+
+    monkeypatch.setattr(tgu, "get_message_source", fake_source)
+
+    msg = _make_private_message()
+    text = await tgu.get_forward_message_text(msg)
+
+    assert text == "Forwarded from: private @alice"
+
+
+@pytest.mark.asyncio
+async def test_forward_message_template_placeholders(monkeypatch):
+    """A template fills ``{trigger}``, ``{source}``, ``{username}``, ``{name}``, ``{chat}``."""
+
+    async def fake_source(m):
+        return "SRC"
+
+    async def fake_chat_name(peer, safe=False):
+        return "Alice Chat"
+
+    monkeypatch.setattr(tgu, "get_message_source", fake_source)
+    monkeypatch.setattr(tgu, "get_chat_name", fake_chat_name)
+
+    msg = _make_private_message()
+    text = await tgu.get_forward_message_text(
+        msg,
+        word="hi",
+        message_template="{trigger} | {source} | {username} | {name} | {chat}",
+    )
+
+    assert text == "word: hi | SRC | @alice | Alice Smith | Alice Chat"
+
+
+@pytest.mark.asyncio
+async def test_forward_message_template_unknown_placeholder(monkeypatch):
+    """Unknown placeholders render as empty string, never raise."""
+
+    async def fake_source(m):
+        return "SRC"
+
+    async def fake_chat_name(peer, safe=False):
+        return "C"
+
+    monkeypatch.setattr(tgu, "get_message_source", fake_source)
+    monkeypatch.setattr(tgu, "get_chat_name", fake_chat_name)
+
+    msg = _make_private_message()
+    text = await tgu.get_forward_message_text(
+        msg, word="hi", message_template="{trigger}[{nope}]"
+    )
+
+    assert text == "word: hi[]"
+
+
+@pytest.mark.asyncio
+async def test_forward_message_empty_template(monkeypatch):
+    """An empty template renders to an empty string."""
+
+    async def fake_source(m):
+        return "SRC"
+
+    async def fake_chat_name(peer, safe=False):
+        return "C"
+
+    monkeypatch.setattr(tgu, "get_message_source", fake_source)
+    monkeypatch.setattr(tgu, "get_chat_name", fake_chat_name)
+
+    msg = _make_private_message()
+    text = await tgu.get_forward_message_text(msg, word="hi", message_template="")
+
+    assert text == ""
+
+
+@pytest.mark.asyncio
+async def test_forward_message_flags_drop_trigger_and_source(monkeypatch):
+    """``show_trigger``/``show_source`` flags drop their parts."""
+
+    async def fake_source(m):
+        return "SRC"
+
+    monkeypatch.setattr(tgu, "get_message_source", fake_source)
+
+    msg = _make_private_message()
+
+    only_source = await tgu.get_forward_message_text(msg, word="hi", show_trigger=False)
+    assert only_source == "SRC"
+
+    only_trigger = await tgu.get_forward_message_text(msg, word="hi", show_source=False)
+    assert only_trigger == "word: hi"
+
+    neither = await tgu.get_forward_message_text(
+        msg, word="hi", show_trigger=False, show_source=False
+    )
+    assert neither == ""
+
+
+@pytest.mark.asyncio
+async def test_forward_message_prefix_suffix_wrap(monkeypatch):
+    """``prefix``/``suffix`` wrap the assembled body."""
+
+    async def fake_source(m):
+        return "SRC"
+
+    monkeypatch.setattr(tgu, "get_message_source", fake_source)
+
+    msg = _make_private_message()
+    text = await tgu.get_forward_message_text(
+        msg, word="hi", prefix=">> ", suffix=" <<"
+    )
+
+    assert text == ">> word: hi\n\nSRC <<"
+
+
+@pytest.mark.asyncio
+async def test_forward_message_template_none_source_fields(monkeypatch):
+    """Missing/None source fields render as empty strings."""
+
+    async def fake_source(m):
+        return "SRC"
+
+    async def fake_chat_name(peer, safe=False):
+        return ""
+
+    monkeypatch.setattr(tgu, "get_message_source", fake_source)
+    monkeypatch.setattr(tgu, "get_chat_name", fake_chat_name)
+
+    msg = SimpleNamespace(
+        id=10,
+        peer_id=types.PeerUser(user_id=555),
+        sender=SimpleNamespace(username=None, first_name=None, last_name=None),
+    )
+    text = await tgu.get_forward_message_text(
+        msg, message_template="[{username}][{name}][{chat}]"
+    )
+
+    assert text == "[][][]"

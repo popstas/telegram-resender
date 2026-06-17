@@ -109,12 +109,14 @@ shouldn't be forwarded once the owner has already engaged the conversation.
 - [x] run `pytest` - must pass before next task
 
 ### Task 3: Thread instance config into the forward path
-- [ ] update the call site(s) of `get_forward_message_text` in `src/app.py` (single-message
-      and debounce-batch flush paths) to pass the instance's template/flags
-- [ ] confirm no behavior change for instances without the new config
-- [ ] write/extend tests covering the app-level forward path with a custom template and
+- [x] update the call site(s) of `get_forward_message_text` in `src/app.py` (single-message
+      and debounce-batch flush paths) to pass the instance's template/flags (both paths share
+      `_forward_messages`, so the single call site covers both)
+- [x] confirm no behavior change for instances without the new config (default-unchanged test
+      asserts the helper receives the historical defaults)
+- [x] write/extend tests covering the app-level forward path with a custom template and
       with flags (success + the default-unchanged case)
-- [ ] run `pytest` - must pass before next task
+- [x] run `pytest` - must pass before next task
 
 ### Task 4: Add DebounceManager.cancel
 - [ ] add `cancel(key)` to `src/debounce.py`: cancel the pending timer `handle` (if any)

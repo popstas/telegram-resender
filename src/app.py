@@ -141,6 +141,11 @@ async def _forward_messages(
                 word=used_word,
                 quote=used_quote,
                 reasoning=used_reasoning,
+                message_template=inst.message_template,
+                show_trigger=inst.forward_message_show_trigger,
+                show_source=inst.forward_message_show_source,
+                prefix=inst.forward_message_prefix,
+                suffix=inst.forward_message_suffix,
             )
         destinations = []
         dest_names = []

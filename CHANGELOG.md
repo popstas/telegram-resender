@@ -7,6 +7,7 @@ All notable changes to this project are documented here.
 
 ### Features
 
+- Render configurable forwarded-message preface in telegram_utils
 - Add config fields, parsing, and validation for forward message and cancel-on-owner-reply
 
 ### Documentation

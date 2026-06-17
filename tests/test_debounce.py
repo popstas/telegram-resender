@@ -285,7 +285,7 @@ def test_cancel_unknown_key_is_noop():
     assert scheduler.calls == []
 
 
-def test_cancel_buffered_but_inactive_key_drops_state():
+def test_cancel_inactive_buffer_is_preserved():
     mgr, scheduler = _make_manager()
     # Non-trigger message buffers state but never activates a batch/timer.
     mgr.add_message(
@@ -298,10 +298,25 @@ def test_cancel_buffered_but_inactive_key_drops_state():
         flush_cb=lambda b, c: None,
     )
     assert KEY in mgr._states
+    # cancel() only drops an active batch; the pre-trigger buffer survives so
+    # context accrued before any trigger is not silently discarded.
     mgr.cancel(KEY)
-    assert KEY not in mgr._states
-    # No timer was ever scheduled, so nothing to cancel.
+    assert KEY in mgr._states
     assert scheduler.calls == []
+
+    # A later trigger within the window still carries the preserved context.
+    flushed = []
+    mgr.add_message(
+        KEY,
+        "t1",
+        0.5,
+        debounce_ms=1000,
+        is_trigger=True,
+        header_ctx=None,
+        flush_cb=lambda b, c: flushed.append(b),
+    )
+    scheduler.fire_last()
+    assert flushed == [["a", "t1"]]
 
 
 def test_cancel_only_affects_target_key():

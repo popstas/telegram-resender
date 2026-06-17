@@ -118,16 +118,20 @@ class DebounceManager:
             logger.error("Debounce flush failed: %s", exc)
 
     def cancel(self, key: Hashable) -> None:
-        """Drop any pending batch for ``key`` without flushing it.
+        """Drop an active pending batch for ``key`` without flushing it.
 
         Cancels the scheduled flush timer (if any) and removes the per-key
-        state, so the accumulated batch is discarded. A no-op when ``key`` has
-        no state (e.g. nothing buffered, or already flushed).
+        state, so the accumulated batch is discarded. Only acts while a batch
+        is active (a trigger has started the debounce window); an inactive
+        pre-trigger buffer is left untouched so context accrued before any
+        trigger survives. A no-op when ``key`` has no state (e.g. nothing
+        buffered, or already flushed).
         """
 
-        state = self._states.pop(key, None)
-        if state is None:
+        state = self._states.get(key)
+        if state is None or not state.active:
             return
+        del self._states[key]
         if state.handle is not None:
             state.handle.cancel()
         logger.debug("Cancelled debounce batch for %s", key)

@@ -117,6 +117,21 @@ class DebounceManager:
         if exc is not None:
             logger.error("Debounce flush failed: %s", exc)
 
+    def cancel(self, key: Hashable) -> None:
+        """Drop any pending batch for ``key`` without flushing it.
+
+        Cancels the scheduled flush timer (if any) and removes the per-key
+        state, so the accumulated batch is discarded. A no-op when ``key`` has
+        no state (e.g. nothing buffered, or already flushed).
+        """
+
+        state = self._states.pop(key, None)
+        if state is None:
+            return
+        if state.handle is not None:
+            state.handle.cancel()
+        logger.debug("Cancelled debounce batch for %s", key)
+
     def flush(self, key: Hashable, flush_cb: Callable[[list, Any], Any]) -> Any:
         """Deliver the ordered batch for ``key`` via ``flush_cb`` and clear it.
 

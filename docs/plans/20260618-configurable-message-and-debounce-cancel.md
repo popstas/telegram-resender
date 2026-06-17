@@ -119,12 +119,12 @@ shouldn't be forwarded once the owner has already engaged the conversation.
 - [x] run `pytest` - must pass before next task
 
 ### Task 4: Add DebounceManager.cancel
-- [ ] add `cancel(key)` to `src/debounce.py`: cancel the pending timer `handle` (if any)
+- [x] add `cancel(key)` to `src/debounce.py`: cancel the pending timer `handle` (if any)
       and drop the `_BatchState` for the key; no-op when the key is absent
-- [ ] write tests (success): cancel after an active batch removes state and prevents flush
-- [ ] write tests (edge): cancel with no active batch / unknown key is a safe no-op;
+- [x] write tests (success): cancel after an active batch removes state and prevents flush
+- [x] write tests (edge): cancel with no active batch / unknown key is a safe no-op;
       cancel cancels the scheduled handle (assert via injected scheduler)
-- [ ] run `pytest` - must pass before next task
+- [x] run `pytest` - must pass before next task
 
 ### Task 5: Wire cancel-on-owner-reply into the handler
 - [ ] in `src/app.py` ignore branch (≈ lines 507–511), before `continue`: when the sender

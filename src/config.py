@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 import yaml
 
 from .prompts import Prompt
+from .telegram_utils import _safe_format
 
 # Allow overriding config path via environment variable
 CONFIG_PATH = os.environ.get("CONFIG_PATH", os.path.join("data", "config.yml"))
@@ -195,10 +196,31 @@ async def load_instances(config: dict) -> List[Instance]:
             raise ValueError(f"debounce_ms must be >= 0, got {debounce_ms!r}")
 
         message_template = inst_cfg.get("message_template")
-        if message_template is not None and not isinstance(message_template, str):
-            raise ValueError(
-                f"message_template must be a string, got {message_template!r}"
-            )
+        if message_template is not None:
+            if not isinstance(message_template, str):
+                raise ValueError(
+                    f"message_template must be a string, got {message_template!r}"
+                )
+            # Catch malformed templates (unbalanced braces, positional or
+            # attribute fields) at load time rather than silently dropping
+            # forwards at runtime. Missing keys still render as "" via
+            # _safe_format, so only structural errors surface here.
+            try:
+                _safe_format(
+                    message_template,
+                    {
+                        "trigger": "",
+                        "source": "",
+                        "username": "",
+                        "name": "",
+                        "chat": "",
+                    },
+                )
+            except (ValueError, IndexError, KeyError, AttributeError) as exc:
+                raise ValueError(
+                    f"message_template is not a valid template ({exc}): "
+                    f"{message_template!r}"
+                ) from exc
 
         fm_cfg = inst_cfg.get("forward_message", {})
         if fm_cfg is None:

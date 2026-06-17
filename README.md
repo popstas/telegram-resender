@@ -26,6 +26,8 @@ debounce batching, once-per-chat dedup, and Langfuse tracing.
 - Automatically create forum topics for chats collected from folders
 - Optional per-chat first-match dedup (`once_per_chat`) with a daily reset hour
 - Optional debounce batching (`debounce_ms`) that groups a conversation into one forward
+- Optional cancel of a pending debounce batch when the account owner replies (`cancel_on_owner_reply`)
+- Configurable forwarded-message preface (`message_template` / `forward_message` flags)
 
 ## Setup
 

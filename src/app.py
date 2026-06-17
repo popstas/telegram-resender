@@ -156,7 +156,7 @@ async def _forward_messages(
             destinations.append(inst.target_entity)
             dest_names.append(await get_chat_name(inst.target_entity, safe=True))
         for dest, dname in zip(destinations, dest_names):
-            if not inst.no_forward_message:
+            if not inst.no_forward_message and text:
                 await client.send_message(dest, text)
             for msg in messages:
                 forwarded = await msg.forward_to(dest)

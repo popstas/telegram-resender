@@ -266,6 +266,27 @@ async def test_load_instances_message_template_not_str():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("bad", ["{trigger", "{0}", "{trigger.foo}"])
+async def test_load_instances_message_template_malformed(bad):
+    cfg = {"instances": [{"name": "inst", "words": [], "message_template": bad}]}
+    with pytest.raises(ValueError, match="not a valid template"):
+        await config.load_instances(cfg)
+
+
+@pytest.mark.asyncio
+async def test_load_instances_message_template_unknown_placeholder_ok():
+    # Unknown placeholders are allowed (render as "" at runtime), so they must
+    # not trip the load-time validation.
+    cfg = {
+        "instances": [
+            {"name": "inst", "words": [], "message_template": "{unknown} {trigger}"}
+        ]
+    }
+    instances = await config.load_instances(cfg)
+    assert instances[0].message_template == "{unknown} {trigger}"
+
+
+@pytest.mark.asyncio
 async def test_load_instances_forward_message_show_trigger_not_bool():
     cfg = {
         "instances": [

@@ -5,6 +5,10 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+### Documentation
+
+- Clarify project is a Telethon client and describe triggers/actions
+
 ### Build
 
 - Add git-cliff changelog generation and release workflow

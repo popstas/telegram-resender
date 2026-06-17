@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "telegram-resender"
 version = "0.2.0"
-description = "Listens to mentions in specified Telegram chats and forwards matching messages to a target chat"
+description = "Telegram client (Telethon) that watches chats, channels, and folders and forwards matching messages to a target chat, topic, or webhook"
 readme = "README.md"
 license = {file = "LICENSE"}
 authors = [

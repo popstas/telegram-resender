@@ -137,11 +137,11 @@ shouldn't be forwarded once the owner has already engaged the conversation.
 - [x] run `pytest` - must pass before next task
 
 ### Task 6: Verify acceptance criteria
-- [ ] verify all Overview requirements implemented (template, flags, prefix/suffix,
+- [x] verify all Overview requirements implemented (template, flags, prefix/suffix,
       no_forward_message precedence, default-unchanged output, cancel opt-out)
-- [ ] run full `pytest` suite
-- [ ] run `pre-commit --all-files` - all issues fixed
-- [ ] verify coverage meets project standard (80%+)
+- [x] run full `pytest` suite (183 passed)
+- [x] run `pre-commit --all-files` - all issues fixed (black + isort + changelog passed)
+- [x] verify coverage meets project standard (80%+) (total 87%)
 
 ### Task 7: Update documentation
 - [ ] update `README.md` with the new instance options + examples

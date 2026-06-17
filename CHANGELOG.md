@@ -7,6 +7,7 @@ All notable changes to this project are documented here.
 
 ### Features
 
+- Cancel debounce batch on owner reply in handler
 - Add DebounceManager.cancel to drop pending batch
 - Thread instance config into the forward path
 - Render configurable forwarded-message preface in telegram_utils

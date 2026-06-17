@@ -7,3 +7,10 @@ repos:
     rev: 5.12.0
     hooks:
       - id: isort
+  - repo: local
+    hooks:
+      - id: git-cliff-changelog
+        name: Update CHANGELOG.md
+        entry: bash -c 'git-cliff -o CHANGELOG.md && git add CHANGELOG.md'
+        language: system
+        pass_filenames: false

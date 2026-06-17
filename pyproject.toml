@@ -39,6 +39,7 @@ dev = [
     "pytest-asyncio",
     "pytest-cov",
     "coverage",
+    "git-cliff>=2.0.0",
 ]
 
 [project.scripts]

@@ -32,6 +32,9 @@ This project forwards Telegram messages that match specific rules to a target ch
 │   └── test_webhook_server.py  # manual webhook listener (port 8002)
 ├── tests/                # pytest suite
 ├── README.md             # setup instructions
+├── CHANGELOG.md          # generated from conventional commits by git-cliff
+├── cliff.toml            # git-cliff changelog config
+├── .github/workflows/    # test.yml (CI) + release.yml (git-cliff release notes)
 ├── pyproject.toml / requirements.txt  # dependencies
 └── Dockerfile
 ```

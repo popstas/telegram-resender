@@ -268,3 +268,24 @@ pre-commit install
 ```
 
 This will automatically run `black` and `isort` before each commit.
+
+### Changelog and releases
+
+The changelog is generated from [conventional commits](https://www.conventionalcommits.org/)
+with [git-cliff](https://git-cliff.org/) (`cliff.toml`). The pre-commit hook keeps
+[`CHANGELOG.md`](CHANGELOG.md) up to date; regenerate it manually with:
+
+```bash
+git-cliff -o CHANGELOG.md
+```
+
+`task:`, `chore: release` and merge commits are excluded from the changelog.
+
+To cut a release, bump `version` in `pyproject.toml`, then tag and push:
+
+```bash
+git tag vX.Y.Z && git push origin vX.Y.Z
+```
+
+The [`release` workflow](.github/workflows/release.yml) generates the release notes for the
+tag with git-cliff and publishes the GitHub release automatically.

@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 
 
+## Unreleased
+
+### Build
+
+- Add git-cliff changelog generation and release workflow
+
 ## v0.2.0 - 2026-06-17
 
 ### Features

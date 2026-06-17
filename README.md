@@ -1,6 +1,6 @@
-# telegram-mention-resender
+# telegram-resender
 
-[![Coverage Status](https://coveralls.io/repos/github/popstas/telegram-mention-resender/badge.svg?branch=main)](https://coveralls.io/github/popstas/telegram-mention-resender?branch=main)
+[![Coverage Status](https://coveralls.io/repos/github/popstas/telegram-resender/badge.svg?branch=main)](https://coveralls.io/github/popstas/telegram-resender?branch=main)
 
 This project listens to mentions in specified Telegram chats and forwards
 matching messages to a target chat.

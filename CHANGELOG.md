@@ -3,26 +3,14 @@
 All notable changes to this project are documented here.
 
 
-## Unreleased
+## v0.3.0 - 2026-06-18
 
 ### Features
 
-- Document configurable forward message and debounce cancel
-- Verify acceptance criteria for configurable message and debounce cancel
-- Cancel debounce batch on owner reply in handler
-- Add DebounceManager.cancel to drop pending batch
-- Thread instance config into the forward path
-- Render configurable forwarded-message preface in telegram_utils
-- Add config fields, parsing, and validation for forward message and cancel-on-owner-reply
-
-### Bug Fixes
-
-- Address codex review findings
-- review: Validate message_template and guard empty preface
+- Configurable forwarded message and cancel debounce batch on owner reply (#55)
 
 ### Documentation
 
-- Add plan for configurable forward message + debounce cancel-on-owner-reply
 - Update pyproject description to match new project scope
 - Clarify project is a Telethon client and describe triggers/actions
 

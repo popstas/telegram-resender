@@ -200,6 +200,159 @@ async def test_load_instances_debounce_not_int():
 
 
 @pytest.mark.asyncio
+async def test_load_instances_forward_message_defaults():
+    cfg = {"instances": [{"name": "inst", "words": []}]}
+    instances = await config.load_instances(cfg)
+    inst = instances[0]
+    assert inst.message_template is None
+    assert inst.forward_message_show_trigger is True
+    assert inst.forward_message_show_source is True
+    assert inst.forward_message_prefix == ""
+    assert inst.forward_message_suffix == ""
+    assert inst.cancel_on_owner_reply is True
+
+
+@pytest.mark.asyncio
+async def test_load_instances_message_template_parsed():
+    cfg = {
+        "instances": [
+            {
+                "name": "inst",
+                "words": [],
+                "message_template": "{trigger}\n{source}",
+            }
+        ]
+    }
+    instances = await config.load_instances(cfg)
+    assert instances[0].message_template == "{trigger}\n{source}"
+
+
+@pytest.mark.asyncio
+async def test_load_instances_forward_message_block_parsed():
+    cfg = {
+        "instances": [
+            {
+                "name": "inst",
+                "words": [],
+                "forward_message": {
+                    "show_trigger": False,
+                    "show_source": False,
+                    "prefix": "PRE",
+                    "suffix": "SUF",
+                },
+            }
+        ]
+    }
+    instances = await config.load_instances(cfg)
+    inst = instances[0]
+    assert inst.forward_message_show_trigger is False
+    assert inst.forward_message_show_source is False
+    assert inst.forward_message_prefix == "PRE"
+    assert inst.forward_message_suffix == "SUF"
+
+
+@pytest.mark.asyncio
+async def test_load_instances_cancel_on_owner_reply_parsed():
+    cfg = {"instances": [{"name": "inst", "words": [], "cancel_on_owner_reply": False}]}
+    instances = await config.load_instances(cfg)
+    assert instances[0].cancel_on_owner_reply is False
+
+
+@pytest.mark.asyncio
+async def test_load_instances_message_template_not_str():
+    cfg = {"instances": [{"name": "inst", "words": [], "message_template": 5}]}
+    with pytest.raises(ValueError, match="message_template"):
+        await config.load_instances(cfg)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("bad", ["{trigger", "{0}", "{trigger.foo}"])
+async def test_load_instances_message_template_malformed(bad):
+    cfg = {"instances": [{"name": "inst", "words": [], "message_template": bad}]}
+    with pytest.raises(ValueError, match="not a valid template"):
+        await config.load_instances(cfg)
+
+
+@pytest.mark.asyncio
+async def test_load_instances_message_template_unknown_placeholder_ok():
+    # Unknown placeholders are allowed (render as "" at runtime), so they must
+    # not trip the load-time validation.
+    cfg = {
+        "instances": [
+            {"name": "inst", "words": [], "message_template": "{unknown} {trigger}"}
+        ]
+    }
+    instances = await config.load_instances(cfg)
+    assert instances[0].message_template == "{unknown} {trigger}"
+
+
+@pytest.mark.asyncio
+async def test_load_instances_forward_message_show_trigger_not_bool():
+    cfg = {
+        "instances": [
+            {
+                "name": "inst",
+                "words": [],
+                "forward_message": {"show_trigger": "yes"},
+            }
+        ]
+    }
+    with pytest.raises(ValueError, match="forward_message.show_trigger"):
+        await config.load_instances(cfg)
+
+
+@pytest.mark.asyncio
+async def test_load_instances_forward_message_show_source_not_bool():
+    cfg = {
+        "instances": [
+            {
+                "name": "inst",
+                "words": [],
+                "forward_message": {"show_source": 1},
+            }
+        ]
+    }
+    with pytest.raises(ValueError, match="forward_message.show_source"):
+        await config.load_instances(cfg)
+
+
+@pytest.mark.asyncio
+async def test_load_instances_forward_message_prefix_not_str():
+    cfg = {
+        "instances": [{"name": "inst", "words": [], "forward_message": {"prefix": 1}}]
+    }
+    with pytest.raises(ValueError, match="forward_message.prefix"):
+        await config.load_instances(cfg)
+
+
+@pytest.mark.asyncio
+async def test_load_instances_forward_message_suffix_not_str():
+    cfg = {
+        "instances": [
+            {"name": "inst", "words": [], "forward_message": {"suffix": True}}
+        ]
+    }
+    with pytest.raises(ValueError, match="forward_message.suffix"):
+        await config.load_instances(cfg)
+
+
+@pytest.mark.asyncio
+async def test_load_instances_forward_message_not_mapping():
+    cfg = {"instances": [{"name": "inst", "words": [], "forward_message": "nope"}]}
+    with pytest.raises(ValueError, match="forward_message"):
+        await config.load_instances(cfg)
+
+
+@pytest.mark.asyncio
+async def test_load_instances_cancel_on_owner_reply_not_bool():
+    cfg = {
+        "instances": [{"name": "inst", "words": [], "cancel_on_owner_reply": "true"}]
+    }
+    with pytest.raises(ValueError, match="cancel_on_owner_reply"):
+        await config.load_instances(cfg)
+
+
+@pytest.mark.asyncio
 async def test_load_instances_folder_add_topic():
     cfg = {
         "instances": [

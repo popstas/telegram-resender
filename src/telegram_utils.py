@@ -194,6 +194,32 @@ def get_forward_reason_text(
     return ""
 
 
+class _DefaultFormatDict(dict):
+    """Mapping for ``str.format_map`` that renders missing keys as ``""``."""
+
+    def __missing__(self, key):
+        return ""
+
+
+def _safe_format(template: str, values: dict) -> str:
+    """Substitute placeholders in ``template`` without raising on unknown keys."""
+    return template.format_map(_DefaultFormatDict(values))
+
+
+async def get_message_source_fields(message) -> dict:
+    """Return granular source placeholders: ``username``, ``name``, ``chat``.
+
+    ``username`` is the sender ``@username`` (or ``""``), ``name`` the sender full
+    name (or ``""``), and ``chat`` the chat title/type from ``get_chat_name``.
+    """
+    username = getattr(getattr(message, "sender", None), "username", None) or ""
+    if username:
+        username = f"@{username}"
+    full_name = _sender_full_name(message)
+    chat = await get_chat_name(getattr(message, "peer_id", None))
+    return {"username": username, "name": full_name, "chat": chat}
+
+
 async def get_forward_message_text(
     message,
     *,
@@ -202,8 +228,22 @@ async def get_forward_message_text(
     word: str | None = None,
     quote: str | None = None,
     reasoning: str | None = None,
+    message_template: str | None = None,
+    show_trigger: bool = True,
+    show_source: bool = True,
+    prefix: str = "",
+    suffix: str = "",
 ) -> str:
-    """Return text to send before forwarding ``message``."""
+    """Return text to send before forwarding ``message``.
+
+    With defaults (no ``message_template`` and all flags at their defaults) the
+    output is byte-identical to the historical ``{reason}\\n\\n{source}`` layout.
+    A ``message_template`` wins when set; otherwise the preface is assembled from
+    the ``show_trigger``/``show_source`` flags wrapped by ``prefix``/``suffix``.
+
+    Suppression via ``no_forward_message`` is the caller's responsibility (the
+    forward path skips calling this helper entirely in that case).
+    """
     reason = get_forward_reason_text(
         prompt=prompt,
         score=score,
@@ -212,9 +252,19 @@ async def get_forward_message_text(
         reasoning=reasoning,
     )
     source = await get_message_source(message)
-    if reason:
-        return f"{reason}\n\n{source}"
-    return source
+
+    if message_template is not None:
+        fields = await get_message_source_fields(message)
+        values = {"trigger": reason, "source": source, **fields}
+        return _safe_format(message_template, values)
+
+    trigger_part = reason if show_trigger else ""
+    source_part = source if show_source else ""
+    if trigger_part and source_part:
+        body = f"{trigger_part}\n\n{source_part}"
+    else:
+        body = trigger_part or source_part
+    return f"{prefix}{body}{suffix}"
 
 
 async def get_chat_name(chat_identifier: str, safe: bool = False) -> str:

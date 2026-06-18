@@ -887,6 +887,164 @@ async def test_forward_messages_no_forward_message(
 
 
 @pytest.mark.asyncio
+async def test_forward_messages_empty_header_skips_send(
+    monkeypatch, dummy_message_cls, tmp_path
+):
+    """An empty preface (e.g. all flags off) forwards without sending a header.
+
+    Sending an empty string to Telegram raises, which would otherwise drop the
+    whole forward; the guard must skip the header instead.
+    """
+    sent = []
+
+    class DummyClient:
+        async def send_message(self, *a, **k):
+            sent.append((a, k))
+
+    app.client = DummyClient()
+    tgu.client = app.client
+
+    inst = app.Instance(
+        name="b",
+        words=["hi"],
+        target_chat=1,
+        forward_message_show_trigger=False,
+        forward_message_show_source=False,
+    )
+
+    async def fake_text(message, **kwargs):
+        return ""
+
+    async def fake_get_chat_name(v, safe=False):
+        return "name"
+
+    monkeypatch.setattr(app, "get_forward_message_text", fake_text)
+    monkeypatch.setattr(app, "get_chat_name", fake_get_chat_name)
+
+    m1 = dummy_message_cls(SimpleNamespace(channel_id=1), msg_id=1, text="hi")
+
+    await app._forward_messages(
+        inst,
+        [m1],
+        trigger_message=m1,
+        used_word="hi",
+        used_prompt=None,
+        used_score=0,
+        used_quote=None,
+        used_reasoning=None,
+        used_trace_id=None,
+    )
+
+    assert sent == []
+    assert m1.forwarded == [1]
+
+
+@pytest.mark.asyncio
+async def test_forward_messages_threads_instance_config(
+    monkeypatch, dummy_message_cls, tmp_path
+):
+    """_forward_messages passes the instance's template/flags to the helper."""
+
+    class DummyClient:
+        async def send_message(self, *a, **k):
+            pass
+
+    app.client = DummyClient()
+    tgu.client = app.client
+
+    inst = app.Instance(
+        name="b",
+        words=["hi"],
+        target_chat=1,
+        message_template="{trigger} | {source}",
+        forward_message_show_trigger=False,
+        forward_message_show_source=False,
+        forward_message_prefix=">>",
+        forward_message_suffix="<<",
+    )
+
+    captured = {}
+
+    async def fake_text(message, **kwargs):
+        captured.update(kwargs)
+        return "HEADER"
+
+    async def fake_get_chat_name(v, safe=False):
+        return "name"
+
+    monkeypatch.setattr(app, "get_forward_message_text", fake_text)
+    monkeypatch.setattr(app, "get_chat_name", fake_get_chat_name)
+
+    m1 = dummy_message_cls(SimpleNamespace(channel_id=1), msg_id=1, text="hi")
+
+    await app._forward_messages(
+        inst,
+        [m1],
+        trigger_message=m1,
+        used_word="hi",
+        used_prompt=None,
+        used_score=0,
+        used_quote=None,
+        used_reasoning=None,
+        used_trace_id=None,
+    )
+
+    assert captured["message_template"] == "{trigger} | {source}"
+    assert captured["show_trigger"] is False
+    assert captured["show_source"] is False
+    assert captured["prefix"] == ">>"
+    assert captured["suffix"] == "<<"
+
+
+@pytest.mark.asyncio
+async def test_forward_messages_threads_default_config_unchanged(
+    monkeypatch, dummy_message_cls, tmp_path
+):
+    """With no new config, the helper receives the historical defaults."""
+
+    class DummyClient:
+        async def send_message(self, *a, **k):
+            pass
+
+    app.client = DummyClient()
+    tgu.client = app.client
+
+    inst = app.Instance(name="b", words=["hi"], target_chat=1)
+
+    captured = {}
+
+    async def fake_text(message, **kwargs):
+        captured.update(kwargs)
+        return "HEADER"
+
+    async def fake_get_chat_name(v, safe=False):
+        return "name"
+
+    monkeypatch.setattr(app, "get_forward_message_text", fake_text)
+    monkeypatch.setattr(app, "get_chat_name", fake_get_chat_name)
+
+    m1 = dummy_message_cls(SimpleNamespace(channel_id=1), msg_id=1, text="hi")
+
+    await app._forward_messages(
+        inst,
+        [m1],
+        trigger_message=m1,
+        used_word="hi",
+        used_prompt=None,
+        used_score=0,
+        used_quote=None,
+        used_reasoning=None,
+        used_trace_id=None,
+    )
+
+    assert captured["message_template"] is None
+    assert captured["show_trigger"] is True
+    assert captured["show_source"] is True
+    assert captured["prefix"] == ""
+    assert captured["suffix"] == ""
+
+
+@pytest.mark.asyncio
 async def test_forward_messages_sets_trace_id_on_trigger(
     monkeypatch, dummy_message_cls, tmp_path
 ):

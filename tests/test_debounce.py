@@ -249,6 +249,108 @@ def test_clock_used_when_now_omitted():
     assert flushed == [["trigger"]]
 
 
+# --- cancel tests -------------------------------------------------------------
+
+
+def test_cancel_active_batch_removes_state_and_prevents_flush():
+    mgr, scheduler = _make_manager()
+    flushed = []
+    mgr.add_message(
+        KEY,
+        "t1",
+        0.0,
+        debounce_ms=1000,
+        is_trigger=True,
+        header_ctx=None,
+        flush_cb=lambda b, c: flushed.append(b),
+    )
+    handle = scheduler.calls[-1][2]
+    mgr.cancel(KEY)
+    # Pending timer cancelled and state dropped.
+    assert handle.cancelled is True
+    assert KEY not in mgr._states
+    # Firing the (cancelled) timer flushes nothing.
+    scheduler.fire_last()
+    assert flushed == []
+    # A subsequent flush is also a no-op.
+    assert mgr.flush(KEY, lambda b, c: flushed.append(b)) is None
+    assert flushed == []
+
+
+def test_cancel_unknown_key_is_noop():
+    mgr, scheduler = _make_manager()
+    # No state for KEY → safe no-op, no exception.
+    mgr.cancel(KEY)
+    assert mgr.cancel(("inst", 999)) is None
+    assert scheduler.calls == []
+
+
+def test_cancel_inactive_buffer_is_preserved():
+    mgr, scheduler = _make_manager()
+    # Non-trigger message buffers state but never activates a batch/timer.
+    mgr.add_message(
+        KEY,
+        "a",
+        0.0,
+        debounce_ms=1000,
+        is_trigger=False,
+        header_ctx=None,
+        flush_cb=lambda b, c: None,
+    )
+    assert KEY in mgr._states
+    # cancel() only drops an active batch; the pre-trigger buffer survives so
+    # context accrued before any trigger is not silently discarded.
+    mgr.cancel(KEY)
+    assert KEY in mgr._states
+    assert scheduler.calls == []
+
+    # A later trigger within the window still carries the preserved context.
+    flushed = []
+    mgr.add_message(
+        KEY,
+        "t1",
+        0.5,
+        debounce_ms=1000,
+        is_trigger=True,
+        header_ctx=None,
+        flush_cb=lambda b, c: flushed.append(b),
+    )
+    scheduler.fire_last()
+    assert flushed == [["a", "t1"]]
+
+
+def test_cancel_only_affects_target_key():
+    mgr, scheduler = _make_manager()
+    flushed = {}
+
+    def cb_for(name):
+        return lambda b, c: flushed.__setitem__(name, b)
+
+    mgr.add_message(
+        ("inst", 1),
+        "a1",
+        0.0,
+        debounce_ms=1000,
+        is_trigger=True,
+        header_ctx=None,
+        flush_cb=cb_for("k1"),
+    )
+    mgr.add_message(
+        ("inst", 2),
+        "b1",
+        0.0,
+        debounce_ms=1000,
+        is_trigger=True,
+        header_ctx=None,
+        flush_cb=cb_for("k2"),
+    )
+    mgr.cancel(("inst", 1))
+    # Fire both scheduled timers; only the surviving key flushes.
+    scheduler.calls[0][1]()
+    scheduler.calls[1][1]()
+    assert flushed == {"k2": ["b1"]}
+
+
 # --- async tests (tiny real debounce) ----------------------------------------
 
 

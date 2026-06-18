@@ -141,6 +141,11 @@ async def _forward_messages(
                 word=used_word,
                 quote=used_quote,
                 reasoning=used_reasoning,
+                message_template=inst.message_template,
+                show_trigger=inst.forward_message_show_trigger,
+                show_source=inst.forward_message_show_source,
+                prefix=inst.forward_message_prefix,
+                suffix=inst.forward_message_suffix,
             )
         destinations = []
         dest_names = []
@@ -151,7 +156,7 @@ async def _forward_messages(
             destinations.append(inst.target_entity)
             dest_names.append(await get_chat_name(inst.target_entity, safe=True))
         for dest, dname in zip(destinations, dest_names):
-            if not inst.no_forward_message:
+            if not inst.no_forward_message and text:
                 await client.send_message(dest, text)
             for msg in messages:
                 forwarded = await msg.forward_to(dest)
@@ -508,6 +513,12 @@ async def main() -> None:
                 logger.debug(
                     "Ignoring message from @%s for instance %s", username, inst.name
                 )
+                if (
+                    inst.cancel_on_owner_reply
+                    and inst.debounce_ms > 0
+                    and event.chat_id is not None
+                ):
+                    debounce_manager.cancel((inst.name, event.chat_id))
                 continue
             if not username and effective_ignore:
                 logger.debug(

@@ -1,7 +1,7 @@
 ## Rules on new features:
 - Add tests for new features.
 - Update README.md after features changes.
-- If config type was changed, change config.ts generateConfig function.
+- If the Instance config type changes, update parsing/validation in `src/config.py` `load_instances` and document the keys in `README.md` and `config-example.yml`.
 
 ## Rules before commit
 - Always run `pre-commit --all-files` before commit.

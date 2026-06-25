@@ -245,6 +245,9 @@ python -m src.bulk --folder MyFolder --mute
 # Add a user to all chats in a folder
 python -m src.bulk --folder MyFolder --add-user @username
 
+# Remove a user from all chats in a folder (kick, user can rejoin later)
+python -m src.bulk --folder MyFolder --remove-user @username
+
 # Combine actions
 python -m src.bulk --folder MyFolder --mute --add-user @username
 ```

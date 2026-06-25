@@ -641,6 +641,35 @@ async def _is_participant(channel, username: str) -> bool:
         return False
 
 
+async def _remove_user_from_channel(channel, username: str) -> str:
+    """Remove user from channel. Returns "removed" or "" on failure.
+
+    Uses kick_participant, which bans then immediately unbans, so the user
+    can rejoin later.
+    """
+    if not username:
+        return ""
+
+    chat_display = _format_chat_for_log(channel)
+    try:
+        user = await client.get_input_entity(username)
+    except Exception as exc:  # pylint: disable=broad-except
+        logger.error("Failed to resolve username '%s': %s", username, exc)
+        return ""
+
+    try:
+        await client.kick_participant(channel, user)
+        return "removed"
+    except Exception as exc:  # pylint: disable=broad-except
+        logger.error(
+            "Failed to remove username '%s' from %s: %s",
+            username,
+            chat_display,
+            exc,
+        )
+    return ""
+
+
 async def add_user_to_folder_chats(folder_name: str, username: str) -> None:
     """Add a user to all chats in a folder."""
     if not folder_name or not username:
@@ -665,3 +694,29 @@ async def add_user_to_folder_chats(folder_name: str, username: str) -> None:
             logger.info("Added '%s' to %s", username, chat_display)
         elif result != "privacy":
             logger.error("Failed to add '%s' to %s", username, chat_display)
+
+
+async def remove_user_from_folder_chats(folder_name: str, username: str) -> None:
+    """Remove a user from all chats in a folder."""
+    if not folder_name or not username:
+        return
+    folders = await list_folders()
+    folder = await get_folder(folders, folder_name)
+    if not folder:
+        logger.error("Folder '%s' not found", folder_name)
+        return
+    for peer in getattr(folder, "include_peers", []) or []:
+        try:
+            channel = await client.get_entity(peer)
+        except Exception as exc:  # pylint: disable=broad-except
+            logger.error("Failed to get entity for peer %s: %s", peer, exc)
+            continue
+        chat_display = _format_chat_for_log(channel)
+        if not await _is_participant(channel, username):
+            logger.info("'%s' is not a participant of %s", username, chat_display)
+            continue
+        result = await _remove_user_from_channel(channel, username)
+        if result == "removed":
+            logger.info("Removed '%s' from %s", username, chat_display)
+        else:
+            logger.error("Failed to remove '%s' from %s", username, chat_display)

@@ -524,6 +524,14 @@ async def main() -> None:
             logger.debug("Ignoring message from id %s", user_id)
             return
 
+        if (
+            config.get("ignore_bots", False)
+            and username
+            and username.lower().endswith("bot")
+        ):
+            logger.debug("Ignoring bot @%s", username)
+            return
+
         global_ignore = config.get("ignore_usernames", [])
         for inst in instances:
             if event.chat_id not in inst.chat_ids:

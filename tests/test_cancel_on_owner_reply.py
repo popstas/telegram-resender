@@ -244,3 +244,117 @@ async def test_owner_reply_no_cancel_when_debounce_zero(
     await handler(SimpleNamespace(message=owner_msg, chat_id=1))
 
     assert cancel_calls == []
+
+
+async def _run_bot_case(
+    monkeypatch,
+    dummy_tg_client,
+    dummy_message_cls,
+    tmp_path,
+    *,
+    config,
+    username,
+    inst_kwargs=None,
+    mgr=None,
+):
+    processed = []
+
+    async def fake_process(inst, event):
+        processed.append(event)
+
+    monkeypatch.setattr(app, "process_message", fake_process)
+    inst = app.Instance(name="i", words=["hi"], target_chat=99, **(inst_kwargs or {}))
+    handler = await _setup_handler(
+        monkeypatch,
+        dummy_tg_client,
+        tmp_path,
+        config={"log_level": "info", **config},
+        instances=[inst],
+        mgr=mgr or DebounceManager(clock=lambda: 0.0, scheduler=_FakeScheduler()),
+    )
+    msg = dummy_message_cls(SimpleNamespace(channel_id=1), msg_id=1, text="hi")
+    msg.sender = SimpleNamespace(username=username, id=11)
+    await handler(SimpleNamespace(message=msg, chat_id=1))
+    return processed
+
+
+@pytest.mark.asyncio
+async def test_ignore_bots_drops_bot_username(
+    monkeypatch, dummy_tg_client, dummy_message_cls, tmp_path
+):
+    processed = await _run_bot_case(
+        monkeypatch,
+        dummy_tg_client,
+        dummy_message_cls,
+        tmp_path,
+        config={"ignore_bots": True},
+        username="some_helper_bot",
+    )
+    assert processed == []
+
+
+@pytest.mark.asyncio
+async def test_ignore_bots_case_insensitive(
+    monkeypatch, dummy_tg_client, dummy_message_cls, tmp_path
+):
+    processed = await _run_bot_case(
+        monkeypatch,
+        dummy_tg_client,
+        dummy_message_cls,
+        tmp_path,
+        config={"ignore_bots": True},
+        username="SomeBot",
+    )
+    assert processed == []
+
+
+@pytest.mark.asyncio
+async def test_ignore_bots_off_by_default(
+    monkeypatch, dummy_tg_client, dummy_message_cls, tmp_path
+):
+    processed = await _run_bot_case(
+        monkeypatch,
+        dummy_tg_client,
+        dummy_message_cls,
+        tmp_path,
+        config={},
+        username="x_bot",
+    )
+    assert len(processed) == 1
+
+
+@pytest.mark.asyncio
+async def test_ignore_bots_does_not_cancel_debounce(
+    monkeypatch, dummy_tg_client, dummy_message_cls, tmp_path
+):
+    cancelled = []
+    mgr = DebounceManager(clock=lambda: 0.0, scheduler=_FakeScheduler())
+    monkeypatch.setattr(mgr, "cancel", lambda key: cancelled.append(key))
+    processed = await _run_bot_case(
+        monkeypatch,
+        dummy_tg_client,
+        dummy_message_cls,
+        tmp_path,
+        config={"ignore_bots": True, "ignore_usernames": ["some_helper_bot"]},
+        username="some_helper_bot",
+        inst_kwargs={"debounce_ms": 1000, "cancel_on_owner_reply": True},
+        mgr=mgr,
+    )
+    assert processed == []
+    assert cancelled == []
+
+
+@pytest.mark.asyncio
+async def test_ignore_bots_human_ending_in_bot(
+    monkeypatch, dummy_tg_client, dummy_message_cls, tmp_path
+):
+    """Rule is by username suffix, so a human 'abbot' is dropped too."""
+    processed = await _run_bot_case(
+        monkeypatch,
+        dummy_tg_client,
+        dummy_message_cls,
+        tmp_path,
+        config={"ignore_bots": True},
+        username="abbot",
+    )
+    assert processed == []

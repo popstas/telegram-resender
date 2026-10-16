@@ -57,7 +57,7 @@ def compute_metrics(rows: list[dict], gate: CategoriesGate) -> dict:
             "chat_id": row.get("chat_id"),
             "message_id": row.get("message_id"),
             "label": label,
-            "predicted": predicted,
+            "predicted": row.get("top_category") or predicted,
             "p_forward": row.get("p_forward"),
         }
         should = label in gate.forward
@@ -89,14 +89,20 @@ def acceptance(metrics: dict) -> dict[str, bool]:
         fwd, total = get(name)
         return fwd == total
 
-    weak_fwd, weak_total = get("lead_weak")
-    other_fwd, other_total = get("other")
+    def share_ok(name: str, limit: float, upper: bool) -> bool:
+        fwd, total = get(name)
+        if total == 0:
+            return False
+        return fwd / total <= limit if upper else fwd / total >= limit
+
     return {
-        "lead_direct_all": all_forwarded("lead_direct"),
-        "reco_letters_all": all_forwarded("reco_letters"),
-        "lead_weak_recall": weak_total == 0 or weak_fwd / weak_total >= 0.7,
+        "no_errors": metrics.get("errors", 0) == 0,
+        "lead_direct_all": get("lead_direct")[1] > 0 and all_forwarded("lead_direct"),
+        "reco_letters_all": get("reco_letters")[1] > 0
+        and all_forwarded("reco_letters"),
+        "lead_weak_recall": share_ok("lead_weak", 0.7, upper=False),
         "competitor_forwarded": get("competitor")[0] <= 3,
-        "other_share": other_total == 0 or other_fwd / other_total <= 0.10,
+        "other_share": share_ok("other", 0.10, upper=True),
     }
 
 
@@ -150,9 +156,15 @@ async def run_eval(argv: list[str] | None = None, client=None) -> Path:
         raise SystemExit("TYPESAFE_API_KEY is not set (env or typesafe_api_key)")
 
     with open(args.gold, "r", encoding="utf-8") as f:
-        gold = {
-            (int(g["chat_id"]), int(g["message_id"])): g for g in json.load(f)
-        }
+        gold = {(int(g["chat_id"]), int(g["message_id"])): g for g in json.load(f)}
+    known = set(gate.forward) | set(gate.reject)
+    unknown: dict[str, int] = {}
+    for g in gold.values():
+        if g["label"] not in known:
+            unknown[g["label"]] = unknown.get(g["label"], 0) + 1
+    if unknown:
+        detail = ", ".join(f"{k!r} ({v} rows)" for k, v in sorted(unknown.items()))
+        raise SystemExit(f"Gold labels not in the gate's categories: {detail}")
     messages = load_export(args.export)
 
     todo: list[tuple[dict, dict]] = []
@@ -170,9 +182,7 @@ async def run_eval(argv: list[str] | None = None, client=None) -> Path:
 
     async def classify(msg: dict, g: dict) -> dict:
         async with sem:
-            match = await categories.match_categories(
-                gate, msg["text"], client=client
-            )
+            match = await categories.match_categories(gate, msg["text"], client=client)
         row = {
             "chat_id": msg["chat_id"],
             "message_id": msg["message_id"],
@@ -184,7 +194,8 @@ async def run_eval(argv: list[str] | None = None, client=None) -> Path:
         return {
             **row,
             "error": False,
-            "category": _argmax(match.probabilities) or match.category,
+            "category": _argmax(match.probabilities),
+            "top_category": match.category,
             "forward": match.forward,
             "p_forward": match.p_forward,
             "probabilities": match.probabilities,
@@ -195,6 +206,13 @@ async def run_eval(argv: list[str] | None = None, client=None) -> Path:
     ok = [r for r in results if not r["error"]]
     errors = len(results) - len(ok)
     metrics = compute_metrics(ok, gate)
+    metrics["errors"] = errors
+    error_ids = [
+        {"chat_id": r["chat_id"], "message_id": r["message_id"]}
+        for r in results
+        if r["error"]
+    ]
+    metrics["error_ids"] = error_ids
     accept = acceptance(metrics)
     models = sorted({r["model"] for r in ok if r.get("model")})
     counts = {
@@ -217,9 +235,7 @@ async def run_eval(argv: list[str] | None = None, client=None) -> Path:
         "acceptance": accept,
         "rows": results,
     }
-    path.write_text(
-        json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
 
     print(f"model: {report['response_model']}")
     print("label: forwarded/total")
@@ -229,9 +245,7 @@ async def run_eval(argv: list[str] | None = None, client=None) -> Path:
         f"precision={metrics['forward_precision']:.3f} "
         f"recall={metrics['forward_recall']:.3f}"
     )
-    print(
-        "counts: " + " ".join(f"{k}={v}" for k, v in counts.items())
-    )
+    print("counts: " + " ".join(f"{k}={v}" for k, v in counts.items()))
     for name, passed in accept.items():
         print(f"  {'PASS' if passed else 'FAIL'} {name}")
     for title, items in (
@@ -245,6 +259,9 @@ async def run_eval(argv: list[str] | None = None, client=None) -> Path:
                 f"  {it['chat_id']}:{it['message_id']} {it['label']}"
                 f"→{it['predicted']} {p:.2f}"
             )
+    print("errors:")
+    for e in error_ids:
+        print(f"  {e['chat_id']}:{e['message_id']}")
     print(f"report: {path}")
     return path
 

@@ -27,6 +27,8 @@ This project forwards Telegram messages that match specific rules to a target ch
 │   ├── generate_evals.py # build eval datasets
 │   ├── bulk.py           # bulk operations CLI
 │   ├── webhook.py        # target_webhook HTTP delivery
+│   ├── categories.py     # TypeSafe (Jev) categories gate
+│   ├── run_categories_eval.py # categories gate eval over chat exports + gold
 │   └── __init__.py       # marks package
 ├── scripts/
 │   └── test_webhook_server.py  # manual webhook listener (port 8002)

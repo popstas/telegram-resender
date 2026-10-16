@@ -24,6 +24,7 @@ class Stats:
     forwarded_total: int = 0
     forwarded_words: int = 0
     forwarded_prompt: int = 0
+    forwarded_category: int = 0
     tokens: int = 0
     input_tokens: int = 0
     output_tokens: int = 0
@@ -36,6 +37,7 @@ class Stats:
             forwarded_total=data.get("forwarded_total", 0),
             forwarded_words=data.get("forwarded_words", 0),
             forwarded_prompt=data.get("forwarded_prompt", 0),
+            forwarded_category=data.get("forwarded_category", 0),
             tokens=data.get("tokens", 0),
             input_tokens=data.get("input_tokens", 0),
             output_tokens=data.get("output_tokens", 0),
@@ -122,6 +124,7 @@ class StatsTracker:
         forwarded: bool = False,
         used_word: bool = False,
         used_prompt: bool = False,
+        used_category: bool = False,
     ) -> None:
         inst = self._get_inst(name)
         day = current_day()
@@ -134,6 +137,8 @@ class StatsTracker:
                     scope["forwarded_words"] = scope.get("forwarded_words", 0) + 1
                 if used_prompt:
                     scope["forwarded_prompt"] = scope.get("forwarded_prompt", 0) + 1
+                if used_category:
+                    scope["forwarded_category"] = scope.get("forwarded_category", 0) + 1
         self.dirty = True
         if time.monotonic() - self.last_flush >= self.flush_interval:
             self.flush()

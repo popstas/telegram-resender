@@ -52,6 +52,19 @@ def test_format_json_payload():
     assert payload["timestamp"] == "2026-05-15T12:30:00+00:00"
 
 
+def test_json_payload_category():
+    payload = webhook.format_json_payload(_make_message(), category="lead_direct")
+    assert payload["category"] == "lead_direct"
+
+
+def test_json_payload_category_none():
+    assert webhook.format_json_payload(_make_message())["category"] is None
+
+
+def test_text_payload_unchanged_with_category_support():
+    assert "category" not in webhook.format_text_payload(_make_message())
+
+
 def test_format_json_payload_handles_missing_sender():
     msg = _make_message(sender=None)
     payload = webhook.format_json_payload(msg)

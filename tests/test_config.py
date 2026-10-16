@@ -372,3 +372,105 @@ async def test_load_instances_folder_add_topic():
     assert topic.name == "Topic"
     assert topic.message == "hello"
     assert topic.username == "user"
+
+
+def _cat_cfg(categories):
+    return {"instances": [{"name": "inst", "words": [], "categories": categories}]}
+
+
+@pytest.mark.asyncio
+async def test_categories_parsed():
+    cfg = _cat_cfg(
+        {
+            "instructions": "q",
+            "forward": {"lead_direct": "a", "lead_weak": None},
+            "reject": {"other": "b"},
+        }
+    )
+    inst = (await config.load_instances(cfg))[0]
+    assert inst.categories.instructions == "q"
+    assert inst.categories.forward == {"lead_direct": "a", "lead_weak": None}
+    assert inst.categories.reject == {"other": "b"}
+    assert inst.categories.threshold == 0.5
+    assert inst.categories.model == "jev-latest"
+
+
+@pytest.mark.asyncio
+async def test_categories_custom_threshold_and_model():
+    cfg = _cat_cfg(
+        {
+            "instructions": "q",
+            "forward": {"a": None},
+            "threshold": 0.7,
+            "model": "jev-x",
+        }
+    )
+    inst = (await config.load_instances(cfg))[0]
+    assert inst.categories.threshold == 0.7
+    assert inst.categories.model == "jev-x"
+    assert inst.categories.reject == {}
+
+
+@pytest.mark.asyncio
+async def test_categories_absent_is_none():
+    cfg = {"instances": [{"name": "inst", "words": []}]}
+    inst = (await config.load_instances(cfg))[0]
+    assert inst.categories is None
+    assert inst.forward_message_show_category is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"instructions": "q", "forward": {}},
+        {"instructions": "q", "forward": {"Lead": None}},
+        {"instructions": "q", "forward": {"a": None}, "reject": {"a": None}},
+        {"instructions": "q", "forward": {"a": None}, "threshold": 0},
+        {"instructions": "q", "forward": {"a": None}, "threshold": 1.5},
+        {"forward": {"a": None}},
+        {"instructions": "q", "forward": {"a": 5}},
+        {"instructions": "q", "forward": {"a": None}, "model": ""},
+    ],
+)
+async def test_categories_invalid_raises(bad):
+    with pytest.raises(ValueError, match="categories"):
+        await config.load_instances(_cat_cfg(bad))
+
+
+@pytest.mark.asyncio
+async def test_show_category_default_true_and_validated():
+    ok = {"instances": [{"name": "i", "words": [], "forward_message": {}}]}
+    assert (await config.load_instances(ok))[0].forward_message_show_category is True
+    off = {
+        "instances": [
+            {
+                "name": "i",
+                "words": [],
+                "forward_message": {"show_category": False},
+            }
+        ]
+    }
+    assert (await config.load_instances(off))[0].forward_message_show_category is False
+    bad = {
+        "instances": [
+            {
+                "name": "i",
+                "words": [],
+                "forward_message": {"show_category": "yes"},
+            }
+        ]
+    }
+    with pytest.raises(ValueError, match="forward_message.show_category"):
+        await config.load_instances(bad)
+
+
+@pytest.mark.asyncio
+async def test_message_template_accepts_category_placeholder():
+    cfg = {
+        "instances": [
+            {"name": "i", "words": [], "message_template": "{category}\n{trigger}"}
+        ]
+    }
+    inst = (await config.load_instances(cfg))[0]
+    assert inst.message_template == "{category}\n{trigger}"

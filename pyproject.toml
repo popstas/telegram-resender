@@ -25,9 +25,11 @@ dependencies = [
     "telethon>=1.43.2",
     "PyYAML",
     "httpx",
+    "httpx2[socks]",
     "openai",
     "langfuse",
     "deepeval",
+    "typesafe-sdk>=0.7.5",
 ]
 
 [project.optional-dependencies]

@@ -3,6 +3,32 @@
 All notable changes to this project are documented here.
 
 
+## Unreleased
+
+### Features
+
+- Categories eval runner over telegram-download-chat exports
+- Global ignore_bots option
+- Run categories gate between words and prompts
+- Category hashtag in forward header and webhook payload
+- categories: TypeSafe Choice gate module
+- config: Add categories gate, typesafe_api_key and ignore_bots keys
+- skills: Interactive config.yml instance wizard (#56)
+- bulk: Add --remove-user flag
+
+### Bug Fixes
+
+- Harden categories gate against SDK/client failures
+- Categories eval acceptance fails on errors, empty labels and unknown gold labels
+
+### Documentation
+
+- Add typesafe categories gate implementation plan
+- Add typesafe categories gate design
+- Link telegram-download-chat alongside telegram-assistant
+- Document config skill with instance examples in README
+- Note project is read-only in README
+
 ## v0.3.0 - 2026-06-18
 
 ### Features

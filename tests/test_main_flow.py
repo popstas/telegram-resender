@@ -197,7 +197,7 @@ async def test_process_message_target_webhook(monkeypatch, dummy_message_cls, tm
 
     called = []
 
-    async def fake_send_webhook(target, message):
+    async def fake_send_webhook(target, message, category=None):
         called.append((target, message))
 
     monkeypatch.setattr(app.webhook, "send_webhook", fake_send_webhook)
@@ -1530,3 +1530,197 @@ async def test_negative_words(
     assert msg.forwarded == []
     assert dummy_client.sent == []
     assert app.stats.data["stats"]["total"] == 0
+
+
+# --- categories gate -----------------------------------------------------------
+
+
+def _cat_setup(monkeypatch, tmp_path, sent):
+    class DummyClient:
+        async def send_message(self, *a, **k):
+            sent.append((a, k))
+
+    app.client = DummyClient()
+    tgu.client = app.client
+    app.stats = stats_module.StatsTracker(
+        str(tmp_path / "stats.json"), flush_interval=0
+    )
+
+    async def fake_get_message_source(msg):
+        return "src"
+
+    async def fake_get_chat_name(v, safe=False):
+        return "n"
+
+    monkeypatch.setattr(tgu, "get_message_source", fake_get_message_source)
+    monkeypatch.setattr(tgu, "get_chat_name", fake_get_chat_name)
+    monkeypatch.setattr(app, "get_chat_name", fake_get_chat_name)
+
+
+def _gate():
+    return config_module.CategoriesGate(instructions="x", forward={"lead_direct": None})
+
+
+def _match(forward=True):
+    from src.categories import CategoryMatch
+
+    return CategoryMatch(
+        category="lead_direct",
+        probability=0.8,
+        p_forward=0.8 if forward else 0.1,
+        forward=forward,
+        probabilities={"lead_direct": 0.8},
+    )
+
+
+def _prompt_inst(**kw):
+    return app.Instance(
+        name="c",
+        words=kw.pop("words", []),
+        prompts=[prompts.Prompt(name="hi", prompt="hi", threshold=4)],
+        target_chat=1,
+        categories=kw.pop("categories", _gate()),
+        **kw,
+    )
+
+
+def _spy_prompt(monkeypatch):
+    calls = []
+
+    async def fake_match(prompt, text, inst_name, chat_name):
+        calls.append(text)
+        return prompts.MatchPromptResult(score=0, reasoning="", quote="", trace_id=None)
+
+    monkeypatch.setattr(app, "match_prompt", fake_match)
+    return calls
+
+
+def _spy_categories(monkeypatch, result):
+    calls = []
+
+    async def fake(gate, text, chat_name=None, **kw):
+        calls.append((gate, text, chat_name))
+        return result
+
+    monkeypatch.setattr(app, "match_categories", fake)
+    return calls
+
+
+async def _run(inst, dummy_message_cls, text="hello"):
+    msg = dummy_message_cls(SimpleNamespace(channel_id=1), msg_id=3, text=text)
+    await app.process_message(inst, SimpleNamespace(message=msg, chat_id=1))
+    return msg
+
+
+@pytest.mark.asyncio
+async def test_category_gate_forwards_with_hashtag(
+    monkeypatch, dummy_message_cls, tmp_path
+):
+    sent = []
+    _cat_setup(monkeypatch, tmp_path, sent)
+    cat_calls = _spy_categories(monkeypatch, _match())
+    _spy_prompt(monkeypatch)
+    msg = await _run(_prompt_inst(), dummy_message_cls)
+    assert msg.forwarded == [1]
+    assert sent[0][0][1].startswith("#lead_direct\ncategory: lead_direct 0.80")
+    assert cat_calls[0][2] == "n"
+    assert app.stats.data["stats"]["forwarded_category"] == 1
+
+
+@pytest.mark.asyncio
+async def test_category_gate_runs_before_prompts(
+    monkeypatch, dummy_message_cls, tmp_path
+):
+    _cat_setup(monkeypatch, tmp_path, [])
+    _spy_categories(monkeypatch, _match())
+    prompt_calls = _spy_prompt(monkeypatch)
+    await _run(_prompt_inst(), dummy_message_cls)
+    assert prompt_calls == []
+
+
+@pytest.mark.asyncio
+async def test_category_below_threshold_falls_to_prompts(
+    monkeypatch, dummy_message_cls, tmp_path
+):
+    _cat_setup(monkeypatch, tmp_path, [])
+    _spy_categories(monkeypatch, _match(forward=False))
+    prompt_calls = _spy_prompt(monkeypatch)
+    msg = await _run(_prompt_inst(), dummy_message_cls)
+    assert prompt_calls == ["hello"]
+    assert msg.forwarded == []
+
+
+@pytest.mark.asyncio
+async def test_category_none_falls_to_prompts(monkeypatch, dummy_message_cls, tmp_path):
+    _cat_setup(monkeypatch, tmp_path, [])
+    _spy_categories(monkeypatch, None)
+    prompt_calls = _spy_prompt(monkeypatch)
+    await _run(_prompt_inst(), dummy_message_cls)
+    assert prompt_calls == ["hello"]
+
+
+@pytest.mark.asyncio
+async def test_words_hit_skips_categories(monkeypatch, dummy_message_cls, tmp_path):
+    _cat_setup(monkeypatch, tmp_path, [])
+    cat_calls = _spy_categories(monkeypatch, _match())
+    _spy_prompt(monkeypatch)
+    await _run(_prompt_inst(words=["hello"]), dummy_message_cls)
+    assert cat_calls == []
+
+
+@pytest.mark.asyncio
+async def test_no_text_no_category_call(monkeypatch, dummy_message_cls, tmp_path):
+    _cat_setup(monkeypatch, tmp_path, [])
+    cat_calls = _spy_categories(monkeypatch, _match())
+    _spy_prompt(monkeypatch)
+    await _run(_prompt_inst(), dummy_message_cls, text="")
+    assert cat_calls == []
+
+
+@pytest.mark.asyncio
+async def test_instance_without_categories_never_calls(
+    monkeypatch, dummy_message_cls, tmp_path
+):
+    _cat_setup(monkeypatch, tmp_path, [])
+    cat_calls = _spy_categories(monkeypatch, _match())
+    _spy_prompt(monkeypatch)
+    await _run(_prompt_inst(categories=None), dummy_message_cls)
+    assert cat_calls == []
+
+
+@pytest.mark.asyncio
+async def test_debounce_flush_header_has_hashtag(
+    monkeypatch, dummy_message_cls, tmp_path
+):
+    from src.debounce import DebounceManager
+
+    sent = []
+    _cat_setup(monkeypatch, tmp_path, sent)
+    _spy_categories(monkeypatch, _match())
+    _spy_prompt(monkeypatch)
+    scheduler = _FakeScheduler()
+    monkeypatch.setattr(
+        app, "debounce_manager", DebounceManager(clock=lambda: 0.0, scheduler=scheduler)
+    )
+    await _run(_prompt_inst(debounce_ms=1000), dummy_message_cls)
+    assert sent == []
+    scheduler.fire_last()
+    await asyncio.sleep(0.01)
+    assert sent[0][0][1].startswith("#lead_direct\n")
+    assert app.stats.data["stats"]["forwarded_category"] == 1
+
+
+@pytest.mark.asyncio
+async def test_webhook_gets_category(monkeypatch, dummy_message_cls, tmp_path):
+    _cat_setup(monkeypatch, tmp_path, [])
+    _spy_categories(monkeypatch, _match())
+    _spy_prompt(monkeypatch)
+    called = []
+
+    async def fake_send_webhook(target, message, category=None):
+        called.append((target, message, category))
+
+    monkeypatch.setattr(app.webhook, "send_webhook", fake_send_webhook)
+    hook = config_module.TargetWebhook(url="http://localhost:8002/hook", format="json")
+    msg = await _run(_prompt_inst(target_webhook=hook), dummy_message_cls)
+    assert called == [(hook, msg, "lead_direct")]

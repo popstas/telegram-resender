@@ -1,10 +1,13 @@
 import asyncio
 import logging
 import re
-from typing import List, Sequence, Set
+from typing import TYPE_CHECKING, List, Sequence, Set
 
 from telethon import errors, functions, types
 from telethon.utils import get_peer_id, resolve_id
+
+if TYPE_CHECKING:  # pragma: no cover - used for type hints only
+    from .categories import CategoryMatch
 
 logger = logging.getLogger(__name__)
 
@@ -179,10 +182,13 @@ def get_forward_reason_text(
     word: str | None = None,
     quote: str | None = None,
     reasoning: str | None = None,
+    category: "CategoryMatch | None" = None,
 ) -> str:
     """Return human-readable reason for forwarding a message."""
     if word:
         return f"word: {word}"
+    if category is not None:
+        return f"category: {category.category} {category.probability:.2f}"
     if prompt is not None and score is not None:
         name = getattr(prompt, "name", None) or "prompt"
         reason = f"{name}: {score}/5"
@@ -228,6 +234,8 @@ async def get_forward_message_text(
     word: str | None = None,
     quote: str | None = None,
     reasoning: str | None = None,
+    category: "CategoryMatch | None" = None,
+    show_category: bool = True,
     message_template: str | None = None,
     show_trigger: bool = True,
     show_source: bool = True,
@@ -250,12 +258,19 @@ async def get_forward_message_text(
         word=word,
         quote=quote,
         reasoning=reasoning,
+        category=category,
     )
+    hashtag = f"#{category.category}" if category is not None else ""
     source = await get_message_source(message)
 
     if message_template is not None:
         fields = await get_message_source_fields(message)
-        values = {"trigger": reason, "source": source, **fields}
+        values = {
+            "trigger": reason,
+            "source": source,
+            "category": hashtag,
+            **fields,
+        }
         return _safe_format(message_template, values)
 
     trigger_part = reason if show_trigger else ""
@@ -264,6 +279,8 @@ async def get_forward_message_text(
         body = f"{trigger_part}\n\n{source_part}"
     else:
         body = trigger_part or source_part
+    if hashtag and show_category:
+        body = f"{hashtag}\n{body}" if body else hashtag
     return f"{prefix}{body}{suffix}"
 
 

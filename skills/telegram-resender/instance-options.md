@@ -74,6 +74,23 @@ Only `name` is truly required; give an instance at least one **source** and one
 - **Ask:** "Describe what the AI should score for, the scale to use, and the
   cutoff." Never invent the prompt text or threshold.
 
+### `categories`
+- **Type:** mapping, or omitted. **Default:** none. TypeSafe categories gate; runs
+  after `words` and before `prompts`. Needs the global `typesafe_api_key`. Messages
+  without text skip it; on an API error it counts as not fired.
+  - `instructions` — **required** non-empty string; the question put to the model.
+  - `forward` — **required** non-empty mapping `name -> description` (description
+    may be `null`). Categories that trigger forwarding.
+  - `reject` — optional mapping, same shape. Contrast categories that never forward.
+  - `threshold` — number in `(0, 1]`, default `0.5`. Forwards when the summed
+    probability of the `forward` categories is `>=` this.
+  - `model` — non-empty string, default `jev-latest`.
+  - Names must match `[a-z0-9_]+` and be unique across `forward` and `reject`
+    (invalid values are rejected at load). The most likely `forward` category
+    becomes the `#name` hashtag in the header.
+- **Ask:** "Which categories should forward and which should be rejected, with a
+  short description each, and the question for the model?" Never invent them.
+
 ## Target — where matches go (need at least one)
 
 ### `target_chat`
@@ -91,7 +108,8 @@ Only `name` is truly required; give an instance at least one **source** and one
   - `url` — **required** when the block is present.
   - `format` — `"text"` (default) or `"json"`. Any other value is rejected at load.
     `text` = one line; `json` = object with `from_username`, `from_name`,
-    `message_text`, `chat_id`, `message_id`, `message_url`, `timestamp`.
+    `message_text`, `chat_id`, `message_id`, `message_url`, `timestamp`, `category` (name without `#`,
+    `null` when another gate fired; `text` format unchanged).
 - **Ask:** "POST matches to an HTTP endpoint too? URL and format (text/json)?"
 
 ## Forwarding behavior — when to forward
@@ -132,15 +150,18 @@ Precedence: `no_forward_message` → `message_template` → `forward_message` fl
 ### `message_template`
 - **Type:** string or null. **Default:** `null`. Overrides the whole preface layout.
   Placeholders (missing values render as `""`, never error): `{trigger}`,
-  `{source}`, `{username}`, `{name}`, `{chat}`. Malformed templates (unbalanced
+  `{source}`, `{username}`, `{name}`, `{chat}`, `{category}` (`#<name>` when the
+  categories gate fired, else empty). Malformed templates (unbalanced
   braces, positional/attribute fields) are rejected at load.
 - **Ask:** "Custom preface template? Placeholders: {trigger} {source} {username}
-  {name} {chat}."
+  {name} {chat} {category}."
 
 ### `forward_message`
 - **Type:** mapping (used only when `message_template` is absent). Keys, each
   validated for type:
   - `show_trigger` — bool, default `true` (include the match reason).
+  - `show_category` — bool, default `true` (hashtag line when the categories gate
+    fired; independent of `show_trigger`).
   - `show_source` — bool, default `true` (include the `Forwarded from: …` line).
   - `prefix` — string, default `""` (prepended).
   - `suffix` — string, default `""` (appended).
@@ -163,6 +184,17 @@ Precedence: `no_forward_message` → `message_template` → `forward_message` fl
   message, optional user to invite)"
 
 ## Misc
+
+### `ignore_bots` (global, not per instance)
+- **Type:** bool in the top-level config. **Default:** `false`. Drops messages
+  before any instance runs when the sender username ends in "bot"
+  (case-insensitive). Matches by username, **not** Telegram's bot flag, so
+  `@abbot` is also dropped. Does not reset debounce batches.
+- **Ask:** "Ignore messages from bots globally?"
+
+### `typesafe_api_key` (global, not per instance)
+- **Type:** string in the top-level config. Needed by `categories`; fallback is env
+  `TYPESAFE_API_KEY`.
 
 ### `ignore_usernames_override`
 - **Type:** list of strings, or omitted. **Default:** omitted (inherits the global

@@ -68,7 +68,7 @@ def format_text_payload(message: Any) -> str:
     return f"From: {user_part}, Name: {name}, Message: {text}"
 
 
-def format_json_payload(message: Any) -> dict:
+def format_json_payload(message: Any, category: str | None = None) -> dict:
     """Return a dict payload describing the message."""
     return {
         "from_username": _sender_username(message),
@@ -78,6 +78,7 @@ def format_json_payload(message: Any) -> dict:
         "message_id": getattr(message, "id", None),
         "message_url": get_message_url(message),
         "timestamp": _timestamp(message),
+        "category": category,
     }
 
 
@@ -94,7 +95,9 @@ async def _ensure_sender_loaded(message: Any) -> None:
         logger.debug("Failed to resolve sender for webhook payload", exc_info=True)
 
 
-async def send_webhook(target: TargetWebhook, message: Any) -> None:
+async def send_webhook(
+    target: TargetWebhook, message: Any, category: str | None = None
+) -> None:
     """POST ``message`` to ``target.url`` using ``target.format``.
 
     Failures are logged and swallowed so the caller's flow is never broken.
@@ -104,7 +107,7 @@ async def send_webhook(target: TargetWebhook, message: Any) -> None:
         async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
             if target.format == "json":
                 response = await client.post(
-                    target.url, json=format_json_payload(message)
+                    target.url, json=format_json_payload(message, category)
                 )
             else:
                 response = await client.post(

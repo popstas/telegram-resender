@@ -10,6 +10,13 @@ langfuse_secret_key: ""
 langfuse_base_url: ""
 ignore_usernames: []
 ignore_user_ids: []
+# TypeSafe API key for the per-instance `categories` gate (fallback: env
+# TYPESAFE_API_KEY).
+typesafe_api_key: ""
+# Drop messages from senders whose username ends in "bot" (case-insensitive)
+# before any instance runs. Matches by username, NOT by Telegram's bot flag, so
+# e.g. "@abbot" is also dropped. Default: false.
+ignore_bots: false
 instances:
   - name: default
     entities:
@@ -29,12 +36,15 @@ instances:
     # no_forward_message: true suppresses the preface entirely and wins over these.
     #
     # Option 1 - full template (overrides the layout). Placeholders render missing
-    # values as "" and never raise: {trigger}, {source}, {username}, {name}, {chat}.
+    # values as "" and never raise: {trigger}, {source}, {username}, {name}, {chat},
+    # {category}. {category} renders "#<name>" when the categories gate fired,
+    # otherwise "".
     # message_template: "{trigger}\n{source}"
     #
     # Option 2 - flags + wrap (used only when message_template is absent):
     # forward_message:
     #   show_trigger: true   # include the match reason ({trigger})
+    #   show_category: true  # hashtag line when the categories gate fired (independent of show_trigger)
     #   show_source: true    # include the "Forwarded from: ..." line ({source})
     #   prefix: ""           # free text prepended to the preface
     #   suffix: ""           # free text appended to the preface
@@ -68,6 +78,24 @@ instances:
     words: ["my username"]
     negative_words: []
     ignore_words: []
+    # TypeSafe categories gate (runs after `words`, before `prompts`). All
+    # forward and reject categories go into one Choice question; the message is
+    # forwarded when the summed probability of the forward categories is
+    # >= threshold. The most likely forward category becomes the #hashtag in the
+    # header. Names must match [a-z0-9_]+; forward must be non-empty and names
+    # must be unique across forward and reject. Descriptions may be null.
+    # categories:
+    #   model: jev-latest   # default
+    #   threshold: 0.5      # in (0, 1], default 0.5
+    #   instructions: >-
+    #     We help clients with web development. Which category does the chat
+    #     message belong to?
+    #   forward:
+    #     lead_direct: "The author asks for what we sell or looks for a contractor"
+    #     lead_weak: "Early stage: unsure the service fits, asks about price"
+    #   reject:
+    #     competitor: "Contractor ads and offers of own services"
+    #     other: "Process questions, news, off-topic, thanks"
     prompts:
       - name: example
         prompt: Сообщение содержит недовольство.

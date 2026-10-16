@@ -16,6 +16,10 @@ All notable changes to this project are documented here.
 - skills: Interactive config.yml instance wizard (#56)
 - bulk: Add --remove-user flag
 
+### Bug Fixes
+
+- Categories eval acceptance fails on errors, empty labels and unknown gold labels
+
 ### Documentation
 
 - Add typesafe categories gate implementation plan

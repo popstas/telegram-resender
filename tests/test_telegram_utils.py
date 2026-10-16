@@ -4,6 +4,7 @@ import pytest
 from telethon import types
 
 import src.telegram_utils as tgu
+from src.categories import CategoryMatch
 
 
 @pytest.mark.asyncio
@@ -240,8 +241,6 @@ async def test_forward_message_template_none_source_fields(monkeypatch):
 
     assert text == "[][][]"
 
-
-from src.categories import CategoryMatch  # noqa: E402
 
 _CAT = CategoryMatch(
     category="lead_direct",

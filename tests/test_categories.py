@@ -117,3 +117,38 @@ def test_build_client_uses_config_key_and_caches(monkeypatch):
     assert c1 is not None and categories.build_client() is c1
     categories.config["typesafe_api_key"] = "k2"
     assert categories.build_client() is not c1
+
+
+@pytest.mark.asyncio
+async def test_build_client_error_returns_none(monkeypatch, caplog):
+    def boom():
+        raise RuntimeError("socks missing")
+
+    monkeypatch.setattr(categories, "build_client", boom)
+    with caplog.at_level(logging.WARNING):
+        assert await match_categories(GATE, "hi") is None
+    assert "socks missing" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_missing_sdk_returns_none_and_warns_once(monkeypatch, caplog):
+    import sys
+
+    monkeypatch.setitem(sys.modules, "typesafe_sdk", None)
+    monkeypatch.setattr(categories, "_client", None)
+    monkeypatch.setattr(categories, "_client_key", None)
+    monkeypatch.setattr(categories, "_sdk_warned", False)
+    monkeypatch.setitem(categories.config, "typesafe_api_key", "k")
+    with caplog.at_level(logging.WARNING):
+        assert await match_categories(GATE, "hi") is None
+        assert await match_categories(GATE, "hi") is None
+    assert len([r for r in caplog.records if "typesafe_sdk" in r.getMessage()]) == 1
+
+
+@pytest.mark.asyncio
+async def test_missing_sdk_with_injected_client_returns_none(monkeypatch):
+    import sys
+
+    monkeypatch.setitem(sys.modules, "typesafe_sdk", None)
+    monkeypatch.setattr(categories, "_sdk_warned", False)
+    assert await match_categories(GATE, "hi", client=FakeClient()) is None

@@ -84,7 +84,7 @@ pip install -r requirements.txt
 - `langfuse_public_key` – (optional) public key to enable Langfuse tracing.
 - `langfuse_secret_key` – (optional) secret key for Langfuse.
 - `langfuse_base_url` – (optional) custom Langfuse API URL.
-- `proxy_url` – (optional) proxy URL for Telegram and OpenAI API calls (e.g. `socks5://127.0.0.1:1080` or `http://proxy:8080`).
+- `proxy_url` – (optional) proxy URL for Telegram, OpenAI and TypeSafe API calls (SOCKS supported via `httpx2[socks]`; e.g. `socks5://127.0.0.1:1080` or `http://proxy:8080`).
 - `ignore_usernames` – list of usernames to ignore when processing messages.
 - `ignore_user_ids` – list of user IDs to ignore when processing messages.
 - `typesafe_api_key` – (optional) TypeSafe API key for the `categories` gate
@@ -373,7 +373,9 @@ Payload formats:
 - `text` (default): one line, e.g.
   `From: @user, Name: John Doe, Message: Hello, how are you?`
 - `json`: an object with `from_username`, `from_name`, `message_text`,
-  `chat_id`, `message_id`, `message_url`, `timestamp`.
+  `chat_id`, `message_id`, `message_url`, `timestamp`, `category` (category
+  name without `#`, `null` when another gate fired).
+  The `text` format is unchanged.
 
 Only `text` and `json` are accepted; any other value is rejected at config
 load time.

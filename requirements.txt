@@ -2,6 +2,7 @@ telethon>=1.43.2
 python-socks[asyncio]
 PyYAML
 httpx
+httpx2[socks]
 black
 isort
 pytest

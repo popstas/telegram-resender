@@ -108,7 +108,8 @@ Only `name` is truly required; give an instance at least one **source** and one
   - `url` — **required** when the block is present.
   - `format` — `"text"` (default) or `"json"`. Any other value is rejected at load.
     `text` = one line; `json` = object with `from_username`, `from_name`,
-    `message_text`, `chat_id`, `message_id`, `message_url`, `timestamp`.
+    `message_text`, `chat_id`, `message_id`, `message_url`, `timestamp`, `category` (name without `#`,
+    `null` when another gate fired; `text` format unchanged).
 - **Ask:** "POST matches to an HTTP endpoint too? URL and format (text/json)?"
 
 ## Forwarding behavior — when to forward

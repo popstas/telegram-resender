@@ -3,6 +3,22 @@
 All notable changes to this project are documented here.
 
 
+## Unreleased
+
+### Features
+
+- config: Add categories gate, typesafe_api_key and ignore_bots keys
+- skills: Interactive config.yml instance wizard (#56)
+- bulk: Add --remove-user flag
+
+### Documentation
+
+- Add typesafe categories gate implementation plan
+- Add typesafe categories gate design
+- Link telegram-download-chat alongside telegram-assistant
+- Document config skill with instance examples in README
+- Note project is read-only in README
+
 ## v0.3.0 - 2026-06-18
 
 ### Features

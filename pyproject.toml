@@ -28,6 +28,7 @@ dependencies = [
     "openai",
     "langfuse",
     "deepeval",
+    "typesafe-sdk>=0.7.5",
 ]
 
 [project.optional-dependencies]

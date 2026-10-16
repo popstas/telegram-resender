@@ -1,4 +1,5 @@
 import os
+import re
 from dataclasses import dataclass, field
 from typing import List, Optional, Set
 from urllib.parse import urlparse
@@ -30,6 +31,17 @@ class TargetWebhook:
 
 
 @dataclass
+class CategoriesGate:
+    """TypeSafe categories gate: classify a message into named categories."""
+
+    instructions: str
+    forward: dict[str, str | None]
+    reject: dict[str, str | None] = field(default_factory=dict)
+    threshold: float = 0.5
+    model: str = "jev-latest"
+
+
+@dataclass
 class Instance:
     """Configuration for a single monitoring instance."""
 
@@ -53,12 +65,14 @@ class Instance:
     debounce_ms: int = 0
     message_template: str | None = None
     forward_message_show_trigger: bool = True
+    forward_message_show_category: bool = True
     forward_message_show_source: bool = True
     forward_message_prefix: str = ""
     forward_message_suffix: str = ""
     cancel_on_owner_reply: bool = True
     prompts: List[Prompt] = field(default_factory=list)
     folder_add_topic: List[FolderTopic] = field(default_factory=list)
+    categories: CategoriesGate | None = None
 
 
 def parse_proxy(proxy_url: str) -> Optional[tuple]:
@@ -108,6 +122,65 @@ def get_api_credentials(config: dict) -> tuple:
         raise RuntimeError("api_id and api_hash must be set in config") from exc
     session = config.get("session", "data/session")
     return api_id, api_hash, session
+
+
+_CATEGORY_NAME_RE = re.compile(r"^[a-z0-9_]+$")
+
+
+def _parse_category_map(cfg: dict, key: str, required: bool) -> dict[str, str | None]:
+    raw = cfg.get(key)
+    if raw is None:
+        raw = {}
+    if not isinstance(raw, dict):
+        raise ValueError(f"categories.{key} must be a mapping, got {raw!r}")
+    if required and not raw:
+        raise ValueError(f"categories.{key} must be a non-empty mapping")
+    result: dict[str, str | None] = {}
+    for name, desc in raw.items():
+        if not isinstance(name, str) or not _CATEGORY_NAME_RE.match(name):
+            raise ValueError(
+                f"categories.{key} name must be lowercase [a-z0-9_], got {name!r}"
+            )
+        if desc is not None and not isinstance(desc, str):
+            raise ValueError(
+                f"categories.{key}.{name} must be a string or null, got {desc!r}"
+            )
+        result[name] = desc
+    return result
+
+
+def _parse_categories(cfg: dict | None) -> CategoriesGate | None:
+    if cfg is None:
+        return None
+    if not isinstance(cfg, dict):
+        raise ValueError(f"categories must be a mapping, got {cfg!r}")
+    instructions = cfg.get("instructions")
+    if not isinstance(instructions, str) or not instructions.strip():
+        raise ValueError("categories.instructions must be a non-empty string")
+    forward = _parse_category_map(cfg, "forward", required=True)
+    reject = _parse_category_map(cfg, "reject", required=False)
+    dup = sorted(set(forward) & set(reject))
+    if dup:
+        raise ValueError(f"categories.forward and categories.reject overlap: {dup}")
+    threshold = cfg.get("threshold", 0.5)
+    if (
+        not isinstance(threshold, (int, float))
+        or isinstance(threshold, bool)
+        or not 0 < threshold <= 1
+    ):
+        raise ValueError(
+            f"categories.threshold must be a number in (0, 1], got {threshold!r}"
+        )
+    model = cfg.get("model", "jev-latest")
+    if not isinstance(model, str) or not model.strip():
+        raise ValueError(f"categories.model must be a non-empty string, got {model!r}")
+    return CategoriesGate(
+        instructions=instructions,
+        forward=forward,
+        reject=reject,
+        threshold=float(threshold),
+        model=model,
+    )
 
 
 async def load_instances(config: dict) -> List[Instance]:
@@ -214,6 +287,7 @@ async def load_instances(config: dict) -> List[Instance]:
                         "username": "",
                         "name": "",
                         "chat": "",
+                        "category": "",
                     },
                 )
             except (ValueError, IndexError, KeyError, AttributeError) as exc:
@@ -233,6 +307,12 @@ async def load_instances(config: dict) -> List[Instance]:
             raise ValueError(
                 "forward_message.show_trigger must be a boolean, "
                 f"got {fm_show_trigger!r}"
+            )
+        fm_show_category = fm_cfg.get("show_category", True)
+        if not isinstance(fm_show_category, bool):
+            raise ValueError(
+                "forward_message.show_category must be a boolean, "
+                f"got {fm_show_category!r}"
             )
         fm_show_source = fm_cfg.get("show_source", True)
         if not isinstance(fm_show_source, bool):
@@ -283,12 +363,14 @@ async def load_instances(config: dict) -> List[Instance]:
             debounce_ms=debounce_ms,
             message_template=message_template,
             forward_message_show_trigger=fm_show_trigger,
+            forward_message_show_category=fm_show_category,
             forward_message_show_source=fm_show_source,
             forward_message_prefix=fm_prefix,
             forward_message_suffix=fm_suffix,
             cancel_on_owner_reply=cancel_on_owner_reply,
             prompts=parsed_prompts,
             folder_add_topic=folder_topics,
+            categories=_parse_categories(inst_cfg.get("categories")),
         )
         parsed_instances.append(instance)
     return parsed_instances

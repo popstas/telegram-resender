@@ -1,6 +1,6 @@
 ---
 name: telegram-resender
-description: Use when adding, editing, or removing a monitoring instance in the telegram-resender data/config.yml, or when the user asks what an instance config option (words, folders, target_chat, debounce_ms, once_per_chat, prompts/threshold, message_template, forward_message, target_webhook) means or does.
+description: Use when adding, editing, or removing a monitoring instance in the telegram-resender data/config.yml, or when the user asks what an instance config option (words, folders, target_chat, debounce_ms, once_per_chat, prompts/threshold, categories, ignore_bots, message_template, forward_message, target_webhook) means or does.
 ---
 
 # telegram-resender config
@@ -46,8 +46,10 @@ instance-options.md for each option's meaning and allowed values.
   - forwarding *when*: `once_per_chat` (+`reset_hour`), `debounce_ms`
     (+`cancel_on_owner_reply`)
   - forwarded-message preface: `no_forward_message` / `message_template` /
-    `forward_message` (`show_trigger`, `show_source`, `prefix`, `suffix`)
+    `forward_message` (`show_trigger`, `show_category`, `show_source`, `prefix`, `suffix`)
   - AI scoring: `prompts` (`name`, `prompt`, `threshold`, optional Langfuse keys)
+  - AI categorization: `categories` (`instructions`, `forward`, `reject`,
+    `threshold`, `model`); needs global `typesafe_api_key`
   - folder automation: `folder_mute`, `folder_add_topic`
   - misc: `ignore_usernames_override`, `false_positive_entity`,
     `true_positive_entity`

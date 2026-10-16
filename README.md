@@ -87,11 +87,18 @@ pip install -r requirements.txt
 - `proxy_url` – (optional) proxy URL for Telegram and OpenAI API calls (e.g. `socks5://127.0.0.1:1080` or `http://proxy:8080`).
 - `ignore_usernames` – list of usernames to ignore when processing messages.
 - `ignore_user_ids` – list of user IDs to ignore when processing messages.
+- `typesafe_api_key` – (optional) TypeSafe API key for the `categories` gate
+  (fallback: environment variable `TYPESAFE_API_KEY`).
+- `ignore_bots` – (optional, default `false`) drop messages from bots before any
+  instance runs. The rule matches by sender **username ending in "bot"**
+  (case-insensitive), not by Telegram's bot flag, so e.g. `@abbot` is also dropped.
+  It is checked separately from `ignore_usernames`, so a bot message never counts
+  as an owner reply and never cancels a debounce batch.
 - `instances` – list of monitoring instances. Each instance may contain
   `folders`, `chat_ids`, `entities`, `words`, `negative_words`, `ignore_words`, `target_chat`,
   `target_entity`, `target_webhook`, `folder_mute`, `folder_add_topic`, `false_positive_entity`, `true_positive_entity`,
   `no_forward_message`, `once_per_chat`, `reset_hour`, `debounce_ms`, `ignore_usernames_override`,
-  `message_template`, `forward_message` and `cancel_on_owner_reply`.
+  `message_template`, `forward_message`, `cancel_on_owner_reply` and `categories`.
 - `ignore_usernames_override` (per instance) – if defined, this instance ignores the
   global `ignore_usernames` and uses its own list instead. An empty list (`[]`) means
   the instance ignores no usernames. Omit the key to inherit the global list.
@@ -177,6 +184,49 @@ instances:
     cancel_on_owner_reply: true   # default; set false to always deliver
 ```
 
+## Categories gate (TypeSafe)
+
+An instance may classify each message into named categories with the TypeSafe
+API (`typesafe_api_key`, see Setup). Gate order per instance:
+`words` → `categories` → `prompts`; once a gate fires, later ones are not called.
+Messages without text skip the gate.
+
+```yaml
+instances:
+  - name: Leads
+    entities: ["@example_chat"]
+    words: []
+    categories:
+      model: jev-latest      # default
+      threshold: 0.5         # in (0, 1], default 0.5
+      instructions: >-
+        We help clients with web development. Which category does the chat
+        message belong to?
+      forward:
+        lead_direct: "The author asks for what we sell or looks for a contractor"
+        lead_weak: "Early stage: unsure the service fits, asks about price"
+      reject:
+        competitor: "Contractor ads and offers of own services"
+        other: "Process questions, news, off-topic, thanks"
+```
+
+- `forward` and `reject` map `name -> description` (description may be `null`).
+  Both groups are sent as options of one question, so `reject` categories act as
+  explicit contrast.
+- Validation: `instructions` required; `forward` non-empty; names match
+  `[a-z0-9_]+` and are unique across both groups; `threshold` in `(0, 1]`.
+- `p_forward` is the sum of probabilities of all `forward` categories; the message
+  is forwarded when `p_forward >= threshold`. The most likely `forward` category
+  becomes the hashtag, e.g. `#lead_direct`.
+- The trigger reads `category: lead_direct 0.82`. The hashtag is shown as its own
+  line in the default header (controlled by `forward_message.show_category`,
+  default `true`, independent of `show_trigger`) and is available as
+  `{category}` in `message_template`. For `words`/`prompts` matches the header is
+  unchanged and `{category}` is empty.
+- `target_webhook` with `format: json` gets a `category` field (name without `#`,
+  `null` when the gate did not fire).
+- On a TypeSafe API error the gate is treated as not fired and `prompts` run.
+
 ## Configurable forwarded message
 
 Before each forwarded message the bot sends a preface describing *why* the message
@@ -206,6 +256,7 @@ values render as an empty string, never an error):
 - `{username}` – the sender `@username` (or empty).
 - `{name}` – the sender full name (or empty).
 - `{chat}` – the chat title/type.
+- `{category}` – `#<name>` when the categories gate fired, otherwise empty.
 
 ```yaml
 instances:
@@ -220,6 +271,8 @@ When `message_template` is absent, the preface is assembled from the
 `forward_message` block:
 
 - `show_trigger` (default `true`) – include the match reason.
+- `show_category` (default `true`) – include the `#<category>` hashtag line when the
+  categories gate fired. Independent of `show_trigger`.
 - `show_source` (default `true`) – include the `Forwarded from: …` line.
 - `prefix` (default `""`) – free text prepended to the preface.
 - `suffix` (default `""`) – free text appended to the preface.

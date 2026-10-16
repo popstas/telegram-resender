@@ -7,6 +7,7 @@ All notable changes to this project are documented here.
 
 ### Features
 
+- categories: TypeSafe Choice gate module
 - config: Add categories gate, typesafe_api_key and ignore_bots keys
 - skills: Interactive config.yml instance wizard (#56)
 - bulk: Add --remove-user flag

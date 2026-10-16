@@ -239,3 +239,99 @@ async def test_forward_message_template_none_source_fields(monkeypatch):
     )
 
     assert text == "[][][]"
+
+
+from src.categories import CategoryMatch  # noqa: E402
+
+_CAT = CategoryMatch(
+    category="lead_direct",
+    probability=0.823,
+    p_forward=0.9,
+    forward=True,
+    probabilities={},
+)
+
+
+def _patch_src(monkeypatch):
+    async def fake_source(m):
+        return "SRC"
+
+    async def fake_chat_name(peer, safe=False):
+        return "Chat"
+
+    monkeypatch.setattr(tgu, "get_message_source", fake_source)
+    monkeypatch.setattr(tgu, "get_chat_name", fake_chat_name)
+
+
+def test_reason_category():
+    assert tgu.get_forward_reason_text(category=_CAT) == "category: lead_direct 0.82"
+
+
+def test_reason_word_beats_category():
+    assert tgu.get_forward_reason_text(word="w", category=_CAT) == "word: w"
+
+
+@pytest.mark.asyncio
+async def test_header_default_with_category(monkeypatch):
+    _patch_src(monkeypatch)
+    text = await tgu.get_forward_message_text(_make_private_message(), category=_CAT)
+    assert text == "#lead_direct\ncategory: lead_direct 0.82\n\nSRC"
+
+
+@pytest.mark.asyncio
+async def test_header_category_show_trigger_false(monkeypatch):
+    _patch_src(monkeypatch)
+    text = await tgu.get_forward_message_text(
+        _make_private_message(), category=_CAT, show_trigger=False
+    )
+    assert text == "#lead_direct\nSRC"
+
+
+@pytest.mark.asyncio
+async def test_header_show_category_false(monkeypatch):
+    _patch_src(monkeypatch)
+    text = await tgu.get_forward_message_text(
+        _make_private_message(), category=_CAT, show_category=False
+    )
+    assert text == "category: lead_direct 0.82\n\nSRC"
+
+
+@pytest.mark.asyncio
+async def test_header_prefix_suffix_order(monkeypatch):
+    _patch_src(monkeypatch)
+    text = await tgu.get_forward_message_text(
+        _make_private_message(), category=_CAT, prefix="P:", suffix=":S"
+    )
+    assert text == "P:#lead_direct\ncategory: lead_direct 0.82\n\nSRC:S"
+
+
+@pytest.mark.asyncio
+async def test_header_category_only_hashtag(monkeypatch):
+    _patch_src(monkeypatch)
+    text = await tgu.get_forward_message_text(
+        _make_private_message(),
+        category=_CAT,
+        show_trigger=False,
+        show_source=False,
+    )
+    assert text == "#lead_direct"
+
+
+@pytest.mark.asyncio
+async def test_template_category_placeholder(monkeypatch):
+    _patch_src(monkeypatch)
+    text = await tgu.get_forward_message_text(
+        _make_private_message(),
+        category=_CAT,
+        message_template="{category} {trigger}",
+    )
+    assert text == "#lead_direct category: lead_direct 0.82"
+
+
+@pytest.mark.asyncio
+async def test_template_category_empty_without_gate(monkeypatch):
+    _patch_src(monkeypatch)
+    text = await tgu.get_forward_message_text(
+        _make_private_message(), word="w", message_template="[{category}]"
+    )
+    assert text == "[]"

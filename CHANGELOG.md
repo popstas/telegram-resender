@@ -3,7 +3,7 @@
 All notable changes to this project are documented here.
 
 
-## Unreleased
+## v0.4.0 - 2026-10-16
 
 ### Features
 

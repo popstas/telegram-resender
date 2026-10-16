@@ -4,7 +4,7 @@ session: data/session
 log_level: info
 # proxy_url: socks5://127.0.0.1:1080
 openai_api_key: ""
-openai_model: gpt-4.1-mini
+openai_model: gpt-5.6-luna
 langfuse_public_key: ""
 langfuse_secret_key: ""
 langfuse_base_url: ""

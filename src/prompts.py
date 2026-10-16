@@ -148,7 +148,7 @@ async def match_prompt(
     proxy = config.get("proxy_url")
     http_client = httpx.Client(proxy=proxy) if proxy else None
     client = openai.OpenAI(api_key=config["openai_api_key"], http_client=http_client)
-    model = config.get("openai_model", "gpt-4.1-mini")
+    model = config.get("openai_model", "gpt-5.6-luna")
 
     if not getattr(prompt, "_compiled_prompt", None):
         build_prompt(prompt)

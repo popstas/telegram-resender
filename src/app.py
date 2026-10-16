@@ -6,7 +6,8 @@ from typing import List
 from telethon import TelegramClient, events, types
 from telethon.errors import TypeNotFoundError
 
-from . import langfuse_utils, prompts, telegram_utils, webhook
+from . import categories, langfuse_utils, prompts, telegram_utils, webhook
+from .categories import CategoryMatch, match_categories
 from .config import (
     Instance,
     get_api_credentials,
@@ -107,6 +108,7 @@ async def rescan_loop(instance: Instance, interval: int = 3600) -> None:
         await asyncio.sleep(interval)
         config = load_config()
         prompts.config.update(config)
+        categories.config.update(config)
         await update_instance_chat_ids(instance, False)
 
 
@@ -121,6 +123,7 @@ async def _forward_messages(
     used_quote: str | None,
     used_reasoning: str | None,
     used_trace_id: str | None,
+    used_category: CategoryMatch | None = None,
 ) -> None:
     """Forward a batch of messages to every destination with a single header.
 
@@ -141,6 +144,8 @@ async def _forward_messages(
                 word=used_word,
                 quote=used_quote,
                 reasoning=used_reasoning,
+                category=used_category,
+                show_category=inst.forward_message_show_category,
                 message_template=inst.message_template,
                 show_trigger=inst.forward_message_show_trigger,
                 show_source=inst.forward_message_show_source,
@@ -174,7 +179,11 @@ async def _forward_messages(
     except Exception as exc:  # pylint: disable=broad-except
         logger.error("Failed to forward message: %s", exc)
     if inst.target_webhook is not None:
-        await webhook.send_webhook(inst.target_webhook, trigger_message)
+        await webhook.send_webhook(
+            inst.target_webhook,
+            trigger_message,
+            category=used_category.category if used_category else None,
+        )
 
 
 async def _debounce_message(
@@ -189,6 +198,7 @@ async def _debounce_message(
     used_quote: str | None,
     used_reasoning: str | None,
     used_trace_id: str | None,
+    used_category: CategoryMatch | None = None,
 ) -> None:
     """Buffer ``message`` for debounced delivery (Feature B).
 
@@ -208,6 +218,7 @@ async def _debounce_message(
         "used_quote": used_quote,
         "used_reasoning": used_reasoning,
         "used_trace_id": used_trace_id,
+        "used_category": used_category,
     }
 
     async def flush_cb(batch: list, ctx: dict) -> None:
@@ -221,12 +232,14 @@ async def _debounce_message(
             used_quote=ctx["used_quote"],
             used_reasoning=ctx["used_reasoning"],
             used_trace_id=ctx["used_trace_id"],
+            used_category=ctx.get("used_category"),
         )
         stats.increment(
             inst.name,
             forwarded=True,
             used_word=ctx["used_word"] is not None,
             used_prompt=ctx["used_prompt"] is not None,
+            used_category=ctx.get("used_category") is not None,
         )
 
     debounce_manager.add_message(
@@ -246,6 +259,7 @@ async def _debounce_message(
             forwarded=False,
             used_word=used_word is not None,
             used_prompt=used_prompt is not None,
+            used_category=used_category is not None,
         )
 
 
@@ -274,13 +288,19 @@ async def process_message(inst: Instance, event: events.NewMessage.Event) -> Non
     used_quote: str | None = None
     used_reasoning: str | None = None
     used_trace_id: str | None = None
+    used_category: CategoryMatch | None = None
 
     if message.raw_text:
         w = find_word(inst.words, message.raw_text)
         if w:
             forward = True
             used_word = w
-        else:
+        elif inst.categories:
+            match = await match_categories(inst.categories, message.raw_text, chat_name)
+            if match and match.forward:
+                forward = True
+                used_category = match
+        if not forward:
             for p in inst.prompts:
                 res = await match_prompt(p, message.raw_text, inst.name, chat_name)
                 sc = res.score
@@ -321,6 +341,7 @@ async def process_message(inst: Instance, event: events.NewMessage.Event) -> Non
             used_quote=used_quote,
             used_reasoning=used_reasoning,
             used_trace_id=used_trace_id,
+            used_category=used_category,
         )
         return
 
@@ -335,6 +356,7 @@ async def process_message(inst: Instance, event: events.NewMessage.Event) -> Non
             used_quote=used_quote,
             used_reasoning=used_reasoning,
             used_trace_id=used_trace_id,
+            used_category=used_category,
         )
     else:
         logger.debug(
@@ -348,6 +370,7 @@ async def process_message(inst: Instance, event: events.NewMessage.Event) -> Non
         forwarded=forward,
         used_word=used_word is not None,
         used_prompt=used_prompt is not None,
+        used_category=used_category is not None,
     )
 
 
@@ -454,6 +477,7 @@ async def main() -> None:
     global client, instances, config
     config = load_config()
     prompts.config.update(config)
+    categories.config.update(config)
     global langfuse
     langfuse = langfuse_utils.init_langfuse(config)
     prompts.langfuse = langfuse

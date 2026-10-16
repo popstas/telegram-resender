@@ -89,3 +89,15 @@ def test_clear_folder_chats_unknown_instance(tmp_path):
     tracker = stats_module.StatsTracker(str(path), flush_interval=0)
     tracker.clear_folder_chats("nonexistent")
     assert tracker.data["instances"] == []
+
+
+def test_stats_forwarded_category(tmp_path):
+    tracker = stats_module.StatsTracker(str(tmp_path / "s.json"), flush_interval=0)
+    tracker.increment("a", forwarded=True, used_category=True)
+    tracker.increment("a", forwarded=True, used_word=True)
+    tracker.increment("a", forwarded=False, used_category=True)
+    assert tracker.data["stats"]["forwarded_category"] == 1
+    inst = tracker.data["instances"][0]
+    assert inst["stats"]["forwarded_category"] == 1
+    day = list(inst["days"].keys())[0]
+    assert inst["days"][day]["stats"]["forwarded_category"] == 1

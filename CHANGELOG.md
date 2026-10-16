@@ -7,6 +7,7 @@ All notable changes to this project are documented here.
 
 ### Features
 
+- Global ignore_bots option
 - Run categories gate between words and prompts
 - Category hashtag in forward header and webhook payload
 - categories: TypeSafe Choice gate module

@@ -427,6 +427,32 @@ python -m src.run_openai_evals --instance "Inst" --prompt "Prompt" --suffix run1
 The runner respects any `model` or `temperature` options defined in the prompt
 configuration and forces JSON responses that match the `EvaluateResult` schema.
 
+### Categories gate evaluation
+
+Compare the TypeSafe categories gate with a gold labeling over
+[telegram-download-chat](https://github.com/popstas/telegram-download-chat)
+JSON exports:
+
+```bash
+python -m src.run_categories_eval --instance "Inst" \
+  --export data/exports/chat1/messages.json --export data/exports/chat2/messages.json \
+  --gold data/evals/gold.json --label baseline
+# or a standalone gate file (model, threshold, instructions, forward, reject):
+python -m src.run_categories_eval --categories gate.yml --export ... --gold ...
+```
+
+`--instance` reads the instance's `categories` block from `data/config.yml`
+without connecting to Telegram; `--categories` only needs `TYPESAFE_API_KEY`.
+Gold is a JSON list of `{"chat_id", "message_id", "label", "is_bot"}` (extra
+keys such as `note` are ignored). Messages with `is_bot: true` are skipped
+(mimics `ignore_bots`), messages without a gold row count as `unlabeled`, and
+messages whose API call failed count as `errors`. Options: `--out DIR`
+(default `data/evals`), `--concurrency N` (default 4), `--label NAME`.
+
+Stdout shows forwarded/total per label, precision/recall, the acceptance checks
+and the misses (ids only, no message text). The full report with texts is
+written to `<out>/categories-eval-<label>.json`.
+
 ### Langfuse tracing
 
 Set `langfuse_public_key` and `langfuse_secret_key` in the config to enable

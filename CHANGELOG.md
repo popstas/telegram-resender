@@ -18,6 +18,7 @@ All notable changes to this project are documented here.
 
 ### Bug Fixes
 
+- Harden categories gate against SDK/client failures
 - Categories eval acceptance fails on errors, empty labels and unknown gold labels
 
 ### Documentation

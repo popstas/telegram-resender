@@ -334,3 +334,60 @@ async def test_template_category_empty_without_gate(monkeypatch):
         _make_private_message(), word="w", message_template="[{category}]"
     )
     assert text == "[]"
+
+
+@pytest.mark.asyncio
+async def test_forward_message_template_url_placeholder(monkeypatch):
+    """``{url}`` is the t.me/c link of a channel/group message."""
+
+    async def fake_source(m):
+        return "SRC"
+
+    async def fake_chat_name(peer, safe=False):
+        return "Group Title"
+
+    monkeypatch.setattr(tgu, "get_message_source", fake_source)
+    monkeypatch.setattr(tgu, "get_chat_name", fake_chat_name)
+
+    msg = SimpleNamespace(
+        id=202711,
+        peer_id=types.PeerChannel(channel_id=1588101140),
+        sender=SimpleNamespace(username="bob", first_name="Bob", last_name=None),
+    )
+    text = await tgu.get_forward_message_text(
+        msg,
+        category=CategoryMatch(
+            category="lead_weak", probability=0.81, p_forward=0.81, forward=True
+        ),
+        message_template=(
+            "{category}\n{trigger}\n\nForwarded from: {chat}, {url}\n"
+            "Имя: {name}\nTelegram: {username}"
+        ),
+    )
+
+    assert text == (
+        "#lead_weak\ncategory: lead_weak 0.81\n\n"
+        "Forwarded from: Group Title, https://t.me/c/1588101140/202711\n"
+        "Имя: Bob\nTelegram: @bob"
+    )
+
+
+@pytest.mark.asyncio
+async def test_forward_message_template_url_empty_for_private(monkeypatch):
+    """Private messages have no t.me/c link, so ``{url}`` renders empty."""
+
+    async def fake_source(m):
+        return "SRC"
+
+    async def fake_chat_name(peer, safe=False):
+        return "C"
+
+    monkeypatch.setattr(tgu, "get_message_source", fake_source)
+    monkeypatch.setattr(tgu, "get_chat_name", fake_chat_name)
+
+    msg = _make_private_message()
+    text = await tgu.get_forward_message_text(
+        msg, word="hi", message_template="[{url}]"
+    )
+
+    assert text == "[]"

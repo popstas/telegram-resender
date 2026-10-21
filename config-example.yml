@@ -37,7 +37,8 @@ instances:
     #
     # Option 1 - full template (overrides the layout). Placeholders render missing
     # values as "" and never raise: {trigger}, {source}, {username}, {name}, {chat},
-    # {category}. {category} renders "#<name>" when the categories gate fired,
+    # {url}, {category}. {url} is the t.me/c message link (empty for private chats).
+    # {category} renders "#<name>" when the categories gate fired,
     # otherwise "".
     # message_template: "{trigger}\n{source}"
     #

@@ -256,6 +256,8 @@ values render as an empty string, never an error):
 - `{username}` – the sender `@username` (or empty).
 - `{name}` – the sender full name (or empty).
 - `{chat}` – the chat title/type.
+- `{url}` – the message link `https://t.me/c/<chat_id>/<msg_id>` (empty for
+  private chats).
 - `{category}` – `#<name>` when the categories gate fired, otherwise empty.
 
 ```yaml
@@ -263,6 +265,13 @@ instances:
   - name: Hermes feed
     words: ["my username"]
     message_template: "{trigger}\n{source}"
+```
+
+A lead card that keeps the sender visible even when the forwarded copy hides
+the author:
+
+```yaml
+    message_template: "{category}\n{trigger}\n\nForwarded from: {chat}, {url}\nReferral: chats\nName: {name}\nTelegram: {username}"
 ```
 
 ### Option 2 — flags + wrap (`forward_message`)

@@ -213,17 +213,19 @@ def _safe_format(template: str, values: dict) -> str:
 
 
 async def get_message_source_fields(message) -> dict:
-    """Return granular source placeholders: ``username``, ``name``, ``chat``.
+    """Return granular source placeholders: ``username``, ``name``, ``chat``, ``url``.
 
     ``username`` is the sender ``@username`` (or ``""``), ``name`` the sender full
-    name (or ``""``), and ``chat`` the chat title/type from ``get_chat_name``.
+    name (or ``""``), ``chat`` the chat title/type from ``get_chat_name`` and
+    ``url`` the ``t.me/c`` message link (or ``""`` for private chats).
     """
     username = getattr(getattr(message, "sender", None), "username", None) or ""
     if username:
         username = f"@{username}"
     full_name = _sender_full_name(message)
     chat = await get_chat_name(getattr(message, "peer_id", None))
-    return {"username": username, "name": full_name, "chat": chat}
+    url = get_message_url(message) or ""
+    return {"username": username, "name": full_name, "chat": chat, "url": url}
 
 
 async def get_forward_message_text(

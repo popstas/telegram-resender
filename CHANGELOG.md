@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 
 
+## Unreleased
+
+### Miscellaneous
+
+- models: Default openai_model gpt-4.1-mini -> gpt-5.6-luna
+
 ## v0.4.0 - 2026-10-16
 
 ### Features

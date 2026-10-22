@@ -322,7 +322,9 @@ overall, per-instance and per-day counters. Besides the total processed
 messages, the file tracks how many were forwarded in total, due to word matches
 or prompt matches, and token usage in each scope: `input_tokens` (prompt),
 `output_tokens` (completion), and `tokens` (total from the API when available,
-otherwise the sum of input and output). With `debounce_ms`, the forwarded count
+otherwise the sum of input and output). The `categories` gate adds
+`typesafe_input_tokens` (TypeSafe/Jev input tokens per request), kept separate
+from the OpenAI counters so the two can be priced independently. With `debounce_ms`, the forwarded count
 for a triggering message is recorded when the batch flushes, not when the trigger
 arrives; context messages pulled into a batch are still counted as not forwarded.
 Instances

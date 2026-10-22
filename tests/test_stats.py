@@ -101,3 +101,29 @@ def test_stats_forwarded_category(tmp_path):
     assert inst["stats"]["forwarded_category"] == 1
     day = list(inst["days"].keys())[0]
     assert inst["days"][day]["stats"]["forwarded_category"] == 1
+
+
+def test_add_typesafe_tokens_all_scopes(tmp_path):
+    tracker = stats_module.StatsTracker(str(tmp_path / "s.json"), flush_interval=0)
+    tracker.add_typesafe_tokens("a", 120)
+    tracker.add_typesafe_tokens("a", 30)
+    tracker.add_typesafe_tokens("a", 0)
+    tracker.add_typesafe_tokens("a", -5)
+    assert tracker.data["stats"]["typesafe_input_tokens"] == 150
+    inst = tracker.data["instances"][0]
+    assert inst["stats"]["typesafe_input_tokens"] == 150
+    day = list(inst["days"].keys())[0]
+    assert inst["days"][day]["stats"]["typesafe_input_tokens"] == 150
+    # OpenAI counters stay untouched
+    assert tracker.data["stats"]["input_tokens"] == 0
+    assert tracker.data["stats"]["tokens"] == 0
+    data = json.loads((tmp_path / "s.json").read_text())
+    assert data["stats"]["typesafe_input_tokens"] == 150
+
+
+def test_stats_from_dict_typesafe_default():
+    assert stats_module.Stats.from_dict({}).typesafe_input_tokens == 0
+    assert (
+        stats_module.Stats.from_dict({"typesafe_input_tokens": 7}).typesafe_input_tokens
+        == 7
+    )

@@ -28,6 +28,7 @@ class Stats:
     tokens: int = 0
     input_tokens: int = 0
     output_tokens: int = 0
+    typesafe_input_tokens: int = 0
 
     @classmethod
     def from_dict(cls, data: dict | None) -> "Stats":
@@ -41,6 +42,7 @@ class Stats:
             tokens=data.get("tokens", 0),
             input_tokens=data.get("input_tokens", 0),
             output_tokens=data.get("output_tokens", 0),
+            typesafe_input_tokens=data.get("typesafe_input_tokens", 0),
         )
 
     def to_dict(self) -> dict:
@@ -171,6 +173,21 @@ class StatsTracker:
         inst["input_tokens"] = inst.get("input_tokens", 0) + in_t
         inst["output_tokens"] = inst.get("output_tokens", 0) + out_t
         inst["tokens"] = inst.get("tokens", 0) + delta_total
+        self.dirty = True
+        if time.monotonic() - self.last_flush >= self.flush_interval:
+            self.flush()
+
+    def add_typesafe_tokens(self, name: str, input_tokens: int) -> None:
+        """Add TypeSafe (Jev) input tokens, kept apart from the OpenAI counters."""
+        if input_tokens <= 0:
+            return
+        inst = self._get_inst(name)
+        day = current_day()
+        day_stat = inst["days"].setdefault(day, {"stats": Stats().to_dict()})
+        for scope in (self.data["stats"], inst["stats"], day_stat["stats"]):
+            scope["typesafe_input_tokens"] = (
+                scope.get("typesafe_input_tokens", 0) + input_tokens
+            )
         self.dirty = True
         if time.monotonic() - self.last_flush >= self.flush_interval:
             self.flush()

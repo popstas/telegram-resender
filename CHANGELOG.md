@@ -5,6 +5,10 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+### Features
+
+- {url} placeholder in message_template
+
 ### Miscellaneous
 
 - models: Default openai_model gpt-4.1-mini -> gpt-5.6-luna

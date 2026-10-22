@@ -1561,7 +1561,7 @@ def _gate():
     return config_module.CategoriesGate(instructions="x", forward={"lead_direct": None})
 
 
-def _match(forward=True):
+def _match(forward=True, input_tokens=0):
     from src.categories import CategoryMatch
 
     return CategoryMatch(
@@ -1570,6 +1570,7 @@ def _match(forward=True):
         p_forward=0.8 if forward else 0.1,
         forward=forward,
         probabilities={"lead_direct": 0.8},
+        input_tokens=input_tokens,
     )
 
 
@@ -1657,6 +1658,20 @@ async def test_category_none_falls_to_prompts(monkeypatch, dummy_message_cls, tm
     prompt_calls = _spy_prompt(monkeypatch)
     await _run(_prompt_inst(), dummy_message_cls)
     assert prompt_calls == ["hello"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("forward", [True, False])
+async def test_category_tokens_recorded(
+    monkeypatch, dummy_message_cls, tmp_path, forward
+):
+    _cat_setup(monkeypatch, tmp_path, [])
+    _spy_categories(monkeypatch, _match(forward=forward, input_tokens=120))
+    _spy_prompt(monkeypatch)
+    await _run(_prompt_inst(), dummy_message_cls)
+    assert app.stats.data["stats"]["typesafe_input_tokens"] == 120
+    inst = app.stats.data["instances"][0]
+    assert inst["stats"]["typesafe_input_tokens"] == 120
 
 
 @pytest.mark.asyncio

@@ -297,6 +297,8 @@ async def process_message(inst: Instance, event: events.NewMessage.Event) -> Non
             used_word = w
         elif inst.categories:
             match = await match_categories(inst.categories, message.raw_text, chat_name)
+            if match:
+                stats.add_typesafe_tokens(inst.name, match.input_tokens)
             if match and match.forward:
                 forward = True
                 used_category = match

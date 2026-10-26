@@ -391,3 +391,57 @@ async def test_forward_message_template_url_empty_for_private(monkeypatch):
     )
 
     assert text == "[]"
+
+
+@pytest.mark.asyncio
+async def test_source_fields_refetch_min_sender_username(monkeypatch):
+    """A ``min`` sender from an update lacks the username: fetch the full user."""
+
+    async def fake_chat_name(peer, safe=False):
+        return "Group Title"
+
+    monkeypatch.setattr(tgu, "get_chat_name", fake_chat_name)
+
+    full = SimpleNamespace(username="alice_w", first_name="Alice", last_name="W")
+
+    async def get_sender():
+        return full
+
+    msg = SimpleNamespace(
+        id=42,
+        peer_id=types.PeerChannel(channel_id=777),
+        sender=SimpleNamespace(
+            username=None, first_name="Alice", last_name="W", min=True
+        ),
+        get_sender=get_sender,
+    )
+
+    fields = await tgu.get_message_source_fields(msg)
+
+    assert fields["username"] == "@alice_w"
+    assert fields["name"] == "Alice W"
+
+
+@pytest.mark.asyncio
+async def test_source_fields_sender_refetch_error_keeps_empty(monkeypatch):
+    """A failed sender fetch leaves ``username`` empty instead of raising."""
+
+    async def fake_chat_name(peer, safe=False):
+        return "C"
+
+    monkeypatch.setattr(tgu, "get_chat_name", fake_chat_name)
+
+    async def get_sender():
+        raise ValueError("no access hash")
+
+    msg = SimpleNamespace(
+        id=1,
+        peer_id=types.PeerChannel(channel_id=1),
+        sender=SimpleNamespace(username=None, first_name="A", last_name=None, min=True),
+        get_sender=get_sender,
+    )
+
+    fields = await tgu.get_message_source_fields(msg)
+
+    assert fields["username"] == ""
+    assert fields["name"] == "A"

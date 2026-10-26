@@ -121,12 +121,38 @@ def get_message_url(message):
 
 def _sender_full_name(message) -> str:
     """Return ``first_name last_name`` from ``message.sender``, or ``""``."""
-    sender = getattr(message, "sender", None)
+    return _full_name(getattr(message, "sender", None))
+
+
+def _full_name(sender) -> str:
+    """Return ``first_name last_name`` of ``sender``, or ``""``."""
     if sender is None:
         return ""
     first = (getattr(sender, "first_name", None) or "").strip()
     last = (getattr(sender, "last_name", None) or "").strip()
     return " ".join(p for p in (first, last) if p)
+
+
+async def _get_full_sender(message):
+    """Return ``message.sender``, fetching the full user when it lacks a username.
+
+    Senders that come with channel updates are often ``min`` users: name only,
+    no username. Telethon's ``get_sender`` refetches them (and makes no API call
+    for a complete cached sender). Errors keep the cached sender.
+    """
+    sender = getattr(message, "sender", None)
+    get_sender = getattr(message, "get_sender", None)
+    if getattr(sender, "username", None) or not callable(get_sender):
+        return sender
+    try:
+        return await get_sender() or sender
+    except Exception as exc:  # noqa: BLE001 - header text must not break forwarding
+        logger.debug(
+            "Could not fetch sender of message %s: %s",
+            getattr(message, "id", None),
+            exc,
+        )
+        return sender
 
 
 async def get_message_source(message):
@@ -219,10 +245,11 @@ async def get_message_source_fields(message) -> dict:
     name (or ``""``), ``chat`` the chat title/type from ``get_chat_name`` and
     ``url`` the ``t.me/c`` message link (or ``""`` for private chats).
     """
-    username = getattr(getattr(message, "sender", None), "username", None) or ""
+    sender = await _get_full_sender(message)
+    username = getattr(sender, "username", None) or ""
     if username:
         username = f"@{username}"
-    full_name = _sender_full_name(message)
+    full_name = _full_name(sender)
     chat = await get_chat_name(getattr(message, "peer_id", None))
     url = get_message_url(message) or ""
     return {"username": username, "name": full_name, "chat": chat, "url": url}

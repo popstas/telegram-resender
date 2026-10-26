@@ -1739,3 +1739,114 @@ async def test_webhook_gets_category(monkeypatch, dummy_message_cls, tmp_path):
     hook = config_module.TargetWebhook(url="http://localhost:8002/hook", format="json")
     msg = await _run(_prompt_inst(target_webhook=hook), dummy_message_cls)
     assert called == [(hook, msg, "lead_direct")]
+
+
+@pytest.mark.asyncio
+async def test_forward_messages_copies_text_from_protected_chat(
+    monkeypatch, dummy_message_cls
+):
+    """A chat with forwarding disabled gets the message text sent as a copy."""
+    from telethon import errors
+
+    sent = []
+
+    class DummyClient:
+        async def send_message(self, *a, **k):
+            sent.append((a, k))
+            return SimpleNamespace(chat_id=500, id=900 + len(sent))
+
+    app.client = DummyClient()
+    tgu.client = app.client
+
+    inst = app.Instance(name="b", words=["hi"], target_chat=1)
+
+    trace_calls = []
+    monkeypatch.setattr(
+        app.trace_ids, "set", lambda c, m, t: trace_calls.append((c, m, t))
+    )
+
+    async def fake_text(message, **kwargs):
+        return "HEADER"
+
+    async def fake_get_chat_name(v, safe=False):
+        return "name"
+
+    monkeypatch.setattr(app, "get_forward_message_text", fake_text)
+    monkeypatch.setattr(app, "get_chat_name", fake_get_chat_name)
+    monkeypatch.setattr(app, "get_message_url", lambda f: "url")
+
+    class ProtectedMessage(dummy_message_cls):
+        entities = ["bold"]
+
+        async def forward_to(self, target):
+            raise errors.ChatForwardsRestrictedError(request=None)
+
+    m = ProtectedMessage(SimpleNamespace(channel_id=1), msg_id=7, text="need PR")
+    m.message = "need PR"
+
+    await app._forward_messages(
+        inst,
+        [m],
+        trigger_message=m,
+        used_word="hi",
+        used_prompt=None,
+        used_score=0,
+        used_quote=None,
+        used_reasoning=None,
+        used_trace_id="t1",
+    )
+
+    assert sent[0] == ((1, "HEADER"), {})
+    assert sent[1] == ((1, "need PR"), {"formatting_entities": ["bold"]})
+    assert trace_calls == [(500, 902, "t1")]
+
+
+@pytest.mark.asyncio
+async def test_forward_messages_protected_chat_without_text(
+    monkeypatch, dummy_message_cls
+):
+    """A media-only message from a protected chat sends a short note instead."""
+    from telethon import errors
+
+    sent = []
+
+    class DummyClient:
+        async def send_message(self, *a, **k):
+            sent.append((a, k))
+
+    app.client = DummyClient()
+    tgu.client = app.client
+
+    inst = app.Instance(name="b", words=["hi"], target_chat=1)
+
+    async def fake_text(message, **kwargs):
+        return "HEADER"
+
+    async def fake_get_chat_name(v, safe=False):
+        return "name"
+
+    monkeypatch.setattr(app, "get_forward_message_text", fake_text)
+    monkeypatch.setattr(app, "get_chat_name", fake_get_chat_name)
+    monkeypatch.setattr(app, "get_message_url", lambda f: None)
+
+    class ProtectedMessage(dummy_message_cls):
+        async def forward_to(self, target):
+            raise errors.ChatForwardsRestrictedError(request=None)
+
+    m = ProtectedMessage(SimpleNamespace(channel_id=1), msg_id=7, text=None)
+
+    await app._forward_messages(
+        inst,
+        [m],
+        trigger_message=m,
+        used_word="hi",
+        used_prompt=None,
+        used_score=0,
+        used_quote=None,
+        used_reasoning=None,
+        used_trace_id=None,
+    )
+
+    assert len(sent) == 2
+    assert sent[1][0][0] == 1
+    assert "protected" in sent[1][0][1]

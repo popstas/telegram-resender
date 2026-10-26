@@ -37,6 +37,7 @@ debounce batching, once-per-chat dedup, and Langfuse tracing.
 - Optional debounce batching (`debounce_ms`) that groups a conversation into one forward
 - Optional cancel of a pending debounce batch when the account owner replies (`cancel_on_owner_reply`)
 - Configurable forwarded-message preface (`message_template` / `forward_message` flags)
+- Chats with forwarding disabled (protected content): the message text is sent as a copy with its formatting; media-only messages get a short note
 
 ## Add instances with the config skill
 

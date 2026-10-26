@@ -7,6 +7,7 @@ All notable changes to this project are documented here.
 
 ### Features
 
+- stats: Track typesafe_input_tokens for categories gate
 - {url} placeholder in message_template
 
 ### Miscellaneous

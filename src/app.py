@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import List
 
 from telethon import TelegramClient, events, types
-from telethon.errors import TypeNotFoundError
+from telethon.errors import ChatForwardsRestrictedError, TypeNotFoundError
 
 from . import categories, langfuse_utils, prompts, telegram_utils, webhook
 from .categories import CategoryMatch, match_categories
@@ -112,6 +112,26 @@ async def rescan_loop(instance: Instance, interval: int = 3600) -> None:
         await update_instance_chat_ids(instance, False)
 
 
+PROTECTED_MEDIA_NOTE = "[media from a protected chat: forwarding is disabled there]"
+
+
+async def _forward_or_copy(msg, dest):
+    """Forward ``msg`` to ``dest``; for a protected chat, send its text instead.
+
+    Chats with forwarding disabled reject ``forward_to``. The copy keeps the
+    text formatting; a message without text gets a short note.
+    """
+    try:
+        return await msg.forward_to(dest)
+    except ChatForwardsRestrictedError:
+        text = getattr(msg, "message", None) or getattr(msg, "raw_text", None)
+        if not text:
+            return await client.send_message(dest, PROTECTED_MEDIA_NOTE)
+        return await client.send_message(
+            dest, text, formatting_entities=getattr(msg, "entities", None)
+        )
+
+
 async def _forward_messages(
     inst: Instance,
     messages: list,
@@ -164,7 +184,7 @@ async def _forward_messages(
             if not inst.no_forward_message and text:
                 await client.send_message(dest, text)
             for msg in messages:
-                forwarded = await msg.forward_to(dest)
+                forwarded = await _forward_or_copy(msg, dest)
                 if msg is trigger_message and forwarded and used_trace_id:
                     trace_ids.set(forwarded.chat_id, forwarded.id, used_trace_id)
                 f_url = get_message_url(forwarded) if forwarded else None

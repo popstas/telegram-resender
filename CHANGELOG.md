@@ -7,8 +7,13 @@ All notable changes to this project are documented here.
 
 ### Features
 
+- Copy message text from chats with forwarding disabled
 - stats: Track typesafe_input_tokens for categories gate
 - {url} placeholder in message_template
+
+### Bug Fixes
+
+- Fetch full sender when {username} is missing
 
 ### Miscellaneous
 

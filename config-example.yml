@@ -72,6 +72,12 @@ instances:
     # window, drop the accumulated batch and forward nothing. Default: true
     # (opt-out). No effect when debounce_ms is 0.
     cancel_on_owner_reply: true
+    # Wait this many milliseconds before forwarding a match, then check that
+    # the message is still in the source chat. A message deleted in the
+    # meantime (spam removed by an antispam bot or moderators) is not
+    # forwarded at all, header and webhook included. With debounce_ms the
+    # check runs after the debounce window. Default: 0 (no check).
+    delete_check_ms: 0
     # Optional per-instance override of the global `ignore_usernames`.
     # If set (even to an empty list), this instance ignores the global list
     # and uses this one. If omitted, the global `ignore_usernames` applies.

@@ -1282,6 +1282,7 @@ async def test_debounce_buffers_and_flushes(monkeypatch, dummy_message_cls, tmp_
 
     async def fake_forward(inst, messages, **kwargs):
         forward_calls.append((messages, kwargs))
+        return True
 
     monkeypatch.setattr(app, "_forward_messages", fake_forward)
 
@@ -1392,6 +1393,7 @@ async def test_debounce_with_once_per_chat_suppressed_trigger_buffers(
 
     async def fake_forward(inst, messages, **kwargs):
         forward_calls.append((messages, kwargs))
+        return True
 
     monkeypatch.setattr(app, "_forward_messages", fake_forward)
 
@@ -1850,3 +1852,116 @@ async def test_forward_messages_protected_chat_without_text(
     assert len(sent) == 2
     assert sent[1][0][0] == 1
     assert "protected" in sent[1][0][1]
+
+
+async def _forward_with_delete_check(
+    monkeypatch, dummy_message_cls, *, still_there, forward_error=None, webhook=None
+):
+    """Run _forward_messages with delete_check_ms; return sent, forwards, result."""
+    sent, forwards, sleeps, webhooks, lookups = [], [], [], [], []
+
+    class DummyClient:
+        async def send_message(self, *a, **k):
+            sent.append((a, k))
+
+        async def get_messages(self, chat, ids):
+            lookups.append((chat, ids))
+            return [SimpleNamespace(id=i) if still_there else None for i in ids]
+
+    app.client = DummyClient()
+    tgu.client = app.client
+
+    async def fake_sleep(seconds):
+        sleeps.append(seconds)
+
+    async def fake_text(message, **kwargs):
+        return "HEADER"
+
+    async def fake_get_chat_name(v, safe=False):
+        return "name"
+
+    async def fake_send_webhook(target, message, category=None):
+        webhooks.append(message)
+
+    monkeypatch.setattr(app.asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(app, "get_forward_message_text", fake_text)
+    monkeypatch.setattr(app, "get_chat_name", fake_get_chat_name)
+    monkeypatch.setattr(app, "get_message_url", lambda f: "url")
+    monkeypatch.setattr(app.webhook, "send_webhook", fake_send_webhook)
+
+    class Msg(dummy_message_cls):
+        chat_id = -100777
+
+        async def forward_to(self, target):
+            if forward_error:
+                raise forward_error
+            forwards.append((self.id, target))
+            return SimpleNamespace(chat_id=500, id=901)
+
+    inst = app.Instance(
+        name="b",
+        words=["hi"],
+        target_chat=1,
+        delete_check_ms=10000,
+        target_webhook=webhook,
+    )
+    m = Msg(SimpleNamespace(channel_id=777), msg_id=7, text="need PR")
+    result = await app._forward_messages(
+        inst,
+        [m],
+        trigger_message=m,
+        used_word="hi",
+        used_prompt=None,
+        used_score=0,
+        used_quote=None,
+        used_reasoning=None,
+        used_trace_id=None,
+    )
+    assert sleeps == [10.0]
+    assert lookups == [(-100777, [7])]
+    return sent, forwards, webhooks, result
+
+
+@pytest.mark.asyncio
+async def test_forward_messages_skips_message_deleted_during_check(
+    monkeypatch, dummy_message_cls
+):
+    """A message deleted within delete_check_ms is not sent at all, header included."""
+    hook = config_module.TargetWebhook(url="http://localhost:8002/hook", format="json")
+    sent, forwards, webhooks, result = await _forward_with_delete_check(
+        monkeypatch, dummy_message_cls, still_there=False, webhook=hook
+    )
+    assert sent == []
+    assert forwards == []
+    assert webhooks == []
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_forward_messages_forwards_message_still_there_after_check(
+    monkeypatch, dummy_message_cls
+):
+    """A message still in the chat after delete_check_ms is forwarded as usual."""
+    sent, forwards, _, result = await _forward_with_delete_check(
+        monkeypatch, dummy_message_cls, still_there=True
+    )
+    assert sent == [((1, "HEADER"), {})]
+    assert forwards == [(7, 1)]
+    assert result is True
+
+
+@pytest.mark.asyncio
+async def test_forward_messages_deleted_after_check_sends_no_copy(
+    monkeypatch, dummy_message_cls
+):
+    """A message deleted right after the check is not copied into the target."""
+    from telethon import errors
+
+    sent, forwards, _, _ = await _forward_with_delete_check(
+        monkeypatch,
+        dummy_message_cls,
+        still_there=True,
+        forward_error=errors.MessageIdInvalidError(request=None),
+    )
+    assert sent == [((1, "HEADER"), {})]
+    assert forwards == []

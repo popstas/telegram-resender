@@ -63,6 +63,7 @@ class Instance:
     once_per_chat: bool = False
     reset_hour: int = 6
     debounce_ms: int = 0
+    delete_check_ms: int = 0
     message_template: str | None = None
     forward_message_show_trigger: bool = True
     forward_message_show_category: bool = True
@@ -267,6 +268,15 @@ async def load_instances(config: dict) -> List[Instance]:
             raise ValueError(f"debounce_ms must be an integer, got {debounce_ms!r}")
         if debounce_ms < 0:
             raise ValueError(f"debounce_ms must be >= 0, got {debounce_ms!r}")
+        delete_check_ms = inst_cfg.get("delete_check_ms", 0)
+        if (
+            not isinstance(delete_check_ms, int)
+            or isinstance(delete_check_ms, bool)
+            or delete_check_ms < 0
+        ):
+            raise ValueError(
+                f"delete_check_ms must be an integer >= 0, got {delete_check_ms!r}"
+            )
 
         message_template = inst_cfg.get("message_template")
         if message_template is not None:
@@ -361,6 +371,7 @@ async def load_instances(config: dict) -> List[Instance]:
             once_per_chat=inst_cfg.get("once_per_chat", False),
             reset_hour=reset_hour,
             debounce_ms=debounce_ms,
+            delete_check_ms=delete_check_ms,
             message_template=message_template,
             forward_message_show_trigger=fm_show_trigger,
             forward_message_show_category=fm_show_category,

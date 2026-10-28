@@ -4,7 +4,11 @@ from datetime import datetime
 from typing import List
 
 from telethon import TelegramClient, events, types
-from telethon.errors import ChatForwardsRestrictedError, TypeNotFoundError
+from telethon.errors import (
+    ChatForwardsRestrictedError,
+    MessageIdInvalidError,
+    TypeNotFoundError,
+)
 
 from . import categories, langfuse_utils, prompts, telegram_utils, webhook
 from .categories import CategoryMatch, match_categories
@@ -119,10 +123,14 @@ async def _forward_or_copy(msg, dest):
     """Forward ``msg`` to ``dest``; for a protected chat, send its text instead.
 
     Chats with forwarding disabled reject ``forward_to``. The copy keeps the
-    text formatting; a message without text gets a short note.
+    text formatting; a message without text gets a short note. A message
+    deleted in the source chat is not sent: the result is ``None``.
     """
     try:
         return await msg.forward_to(dest)
+    except MessageIdInvalidError:
+        logger.info("Message %s was deleted in the source chat, not sent", msg.id)
+        return None
     except ChatForwardsRestrictedError:
         text = getattr(msg, "message", None) or getattr(msg, "raw_text", None)
         if not text:
@@ -130,6 +138,23 @@ async def _forward_or_copy(msg, dest):
         return await client.send_message(
             dest, text, formatting_entities=getattr(msg, "entities", None)
         )
+
+
+async def _drop_deleted(inst: Instance, messages: list) -> list:
+    """Wait ``inst.delete_check_ms``, then keep the messages still in the chat.
+
+    Antispam bots and moderators delete spam within seconds. When the check
+    itself fails, every message is kept.
+    """
+    await asyncio.sleep(inst.delete_check_ms / 1000)
+    chat_id = getattr(messages[0], "chat_id", None)
+    try:
+        fresh = await client.get_messages(chat_id, ids=[m.id for m in messages])
+    except Exception as exc:  # pylint: disable=broad-except
+        logger.warning("Deleted-message check failed, forwarding anyway: %s", exc)
+        return messages
+    alive = {m.id for m in fresh if m is not None}
+    return [m for m in messages if m.id in alive]
 
 
 async def _forward_messages(
@@ -144,14 +169,28 @@ async def _forward_messages(
     used_reasoning: str | None,
     used_trace_id: str | None,
     used_category: CategoryMatch | None = None,
-) -> None:
+) -> bool:
     """Forward a batch of messages to every destination with a single header.
 
     The header is built from ``trigger_message`` and sent once per destination
     (unless ``inst.no_forward_message``); each message in ``messages`` is then
     forwarded in chronological order. The trigger's forwarded copy receives the
     ``trace_id`` and the webhook fires once for the trigger.
+
+    With ``inst.delete_check_ms`` the batch waits first and drops messages
+    deleted in the meantime; a deleted trigger cancels the whole batch, header
+    and webhook included. Returns ``False`` when nothing was sent for that reason.
     """
+    if inst.delete_check_ms > 0:
+        messages = await _drop_deleted(inst, messages)
+        if not any(m is trigger_message for m in messages):
+            logger.info(
+                "Message %s for %s was deleted within %s ms, not forwarded",
+                trigger_message.id,
+                inst.name,
+                inst.delete_check_ms,
+            )
+            return False
     source_name = await get_chat_name(
         getattr(trigger_message, "chat_id", None), safe=True
     )
@@ -185,6 +224,8 @@ async def _forward_messages(
                 await client.send_message(dest, text)
             for msg in messages:
                 forwarded = await _forward_or_copy(msg, dest)
+                if forwarded is None:
+                    continue
                 if msg is trigger_message and forwarded and used_trace_id:
                     trace_ids.set(forwarded.chat_id, forwarded.id, used_trace_id)
                 f_url = get_message_url(forwarded) if forwarded else None
@@ -204,6 +245,7 @@ async def _forward_messages(
             trigger_message,
             category=used_category.category if used_category else None,
         )
+    return True
 
 
 async def _debounce_message(
@@ -242,7 +284,7 @@ async def _debounce_message(
     }
 
     async def flush_cb(batch: list, ctx: dict) -> None:
-        await _forward_messages(
+        forwarded = await _forward_messages(
             inst,
             batch,
             trigger_message=ctx["trigger_message"],
@@ -256,7 +298,7 @@ async def _debounce_message(
         )
         stats.increment(
             inst.name,
-            forwarded=True,
+            forwarded=forwarded,
             used_word=ctx["used_word"] is not None,
             used_prompt=ctx["used_prompt"] is not None,
             used_category=ctx.get("used_category") is not None,
@@ -368,7 +410,7 @@ async def process_message(inst: Instance, event: events.NewMessage.Event) -> Non
         return
 
     if forward:
-        await _forward_messages(
+        forward = await _forward_messages(
             inst,
             [message],
             trigger_message=message,

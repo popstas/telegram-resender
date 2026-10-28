@@ -38,6 +38,7 @@ debounce batching, once-per-chat dedup, and Langfuse tracing.
 - Optional cancel of a pending debounce batch when the account owner replies (`cancel_on_owner_reply`)
 - Configurable forwarded-message preface (`message_template` / `forward_message` flags)
 - Chats with forwarding disabled (protected content): the message text is sent as a copy with its formatting; media-only messages get a short note
+- Optional deleted-message check (`delete_check_ms`): wait before forwarding and skip a message that was deleted in the meantime (spam removed by an antispam bot or moderators), header included
 
 ## Add instances with the config skill
 
@@ -98,7 +99,7 @@ pip install -r requirements.txt
 - `instances` – list of monitoring instances. Each instance may contain
   `folders`, `chat_ids`, `entities`, `words`, `negative_words`, `ignore_words`, `target_chat`,
   `target_entity`, `target_webhook`, `folder_mute`, `folder_add_topic`, `false_positive_entity`, `true_positive_entity`,
-  `no_forward_message`, `once_per_chat`, `reset_hour`, `debounce_ms`, `ignore_usernames_override`,
+  `no_forward_message`, `once_per_chat`, `reset_hour`, `debounce_ms`, `delete_check_ms`, `ignore_usernames_override`,
   `message_template`, `forward_message`, `cancel_on_owner_reply` and `categories`.
 - `ignore_usernames_override` (per instance) – if defined, this instance ignores the
   global `ignore_usernames` and uses its own list instead. An empty list (`[]`) means

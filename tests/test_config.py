@@ -474,3 +474,24 @@ async def test_message_template_accepts_category_placeholder():
     }
     inst = (await config.load_instances(cfg))[0]
     assert inst.message_template == "{category}\n{trigger}"
+
+
+@pytest.mark.asyncio
+async def test_load_instances_delete_check_ms():
+    cfg = {
+        "instances": [
+            {"name": "a", "words": []},
+            {"name": "b", "words": [], "delete_check_ms": 10000},
+        ]
+    }
+    instances = await config.load_instances(cfg)
+    assert instances[0].delete_check_ms == 0
+    assert instances[1].delete_check_ms == 10000
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("bad", [-1, "10000", True])
+async def test_load_instances_delete_check_ms_invalid(bad):
+    cfg = {"instances": [{"name": "inst", "words": [], "delete_check_ms": bad}]}
+    with pytest.raises(ValueError, match="delete_check_ms"):
+        await config.load_instances(cfg)

@@ -118,7 +118,9 @@ Only `name` is truly required; give an instance at least one **source** and one
   - `dir` — **required**: inbox directory (path inside the container). Must exist.
   - One forwarded batch = one file `YYYY-MM-DD_HH-MM-SS_<login or chat>_<msg_id>.md`
     (UTC time). Content: the `Forwarded from: …` source line, then the message
-    texts of the batch separated by blank lines; media without text → a short note.
+    texts of the batch separated by blank lines. Attachments are not saved: a caption
+    gets a `[вложение: <kind>]` line before it, an attachment without text becomes
+    `[вложение без текста: <kind>, не сохранено]` (kind = Telethon: photo, video, voice, …).
     Written to `.<name>.tmp` and renamed (atomic); existing files are never touched.
 - **Ask:** "Also save each match to a file for a watcher? Which directory?"
 

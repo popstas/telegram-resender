@@ -116,7 +116,7 @@ async def rescan_loop(instance: Instance, interval: int = 3600) -> None:
         await update_instance_chat_ids(instance, False)
 
 
-PROTECTED_MEDIA_NOTE = telegram_utils.PROTECTED_MEDIA_NOTE
+PROTECTED_MEDIA_NOTE = "[media from a protected chat: forwarding is disabled there]"
 
 
 async def _forward_or_copy(msg, dest):

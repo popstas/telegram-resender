@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import pytest
+from telethon import types
 
 from src import target_file
 from src import telegram_utils as tgu
@@ -39,8 +40,7 @@ def fake_source(monkeypatch):
 
 def test_filename_uses_login_and_trigger_id():
     assert (
-        target_file.build_filename(_msg(4242))
-        == "2026-11-05_14-03-09_ivan_p_4242.md"
+        target_file.build_filename(_msg(4242)) == "2026-11-05_14-03-09_ivan_p_4242.md"
     )
 
 
@@ -72,8 +72,8 @@ def test_sanitize_never_starts_with_dot():
 async def test_write_batch_content(tmp_path, fake_source):
     messages = [
         _msg(100, "Привет!"),
-        _msg(101, None, media=object()),
-        _msg(102, "Подскажите по договору"),
+        _msg(101, None, media=object(), photo=object()),
+        _msg(102, "Подскажите по договору", media=object(), document=object()),
         _msg(103, None),  # service message: no text, no media -> skipped
     ]
     path = await target_file.write_batch(
@@ -88,8 +88,9 @@ async def test_write_batch_content(tmp_path, fake_source):
         "\n"
         "Привет!\n"
         "\n"
-        f"{tgu.PROTECTED_MEDIA_NOTE}\n"
+        "[вложение без текста: photo, не сохранено]\n"
         "\n"
+        "[вложение: document]\n"
         "Подскажите по договору\n"
     )
     assert "do telegram-message-analyze" not in content
@@ -143,3 +144,34 @@ async def test_write_batch_missing_dir_is_logged(tmp_path, fake_source, caplog):
     path = await target_file.write_batch(target, [_msg(1, "x")], _msg(1, "x"))
     assert path is None
     assert "Failed to write" in caplog.text
+
+
+def test_media_type_prefers_specific_kind():
+    # Telethon: a voice note is also a document.
+    msg = _msg(1, None, media=object(), voice=object(), document=object())
+    assert target_file.media_type(msg) == "voice"
+
+
+def test_media_type_ignores_link_preview():
+    # Telethon's ``photo`` also returns the photo of a link preview.
+    preview = types.MessageMediaWebPage(webpage=types.WebPageEmpty(id=1))
+    msg = _msg(1, "see https://example.com", media=preview, photo=object())
+    assert target_file.media_type(msg) is None
+    assert target_file.message_body(msg) == "see https://example.com"
+
+
+def test_media_type_falls_back_to_telethon_class_name():
+    msg = _msg(1, None, media=types.MessageMediaUnsupported())
+    assert target_file.media_type(msg) == "unsupported"
+
+
+def test_message_body_caption_gets_attachment_line():
+    msg = _msg(1, "подпись", media=object(), video=object())
+    assert target_file.message_body(msg) == "[вложение: video]\nподпись"
+
+
+def test_message_body_media_without_text():
+    msg = _msg(1, None, media=object(), sticker=object())
+    assert (
+        target_file.message_body(msg) == "[вложение без текста: sticker, не сохранено]"
+    )

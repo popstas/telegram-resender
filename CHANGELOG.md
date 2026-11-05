@@ -7,6 +7,7 @@ All notable changes to this project are documented here.
 
 ### Features
 
+- Target_file inbox delivery, one file per forwarded batch
 - Skip messages deleted before forwarding (delete_check_ms)
 - Copy message text from chats with forwarding disabled
 - stats: Track typesafe_input_tokens for categories gate

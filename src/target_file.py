@@ -12,6 +12,8 @@ import re
 from datetime import datetime, timezone
 from typing import Any
 
+from telethon import types
+
 from . import telegram_utils
 from .config import TargetFile
 
@@ -30,7 +32,10 @@ def sanitize(value: str | None) -> str:
 def _label(message: Any) -> str:
     sender = getattr(message, "sender", None)
     chat = getattr(message, "chat", None)
-    for candidate in (getattr(sender, "username", None), getattr(chat, "username", None)):
+    for candidate in (
+        getattr(sender, "username", None),
+        getattr(chat, "username", None),
+    ):
         label = sanitize(candidate)
         if label:
             return label
@@ -52,14 +57,54 @@ def build_filename(trigger: Any) -> str:
     return f"{stamp}_{_label(trigger)}_{msg_id}.md"
 
 
+# Telethon ``Message`` properties, most specific first: a voice, sticker or
+# video is also a ``document``.
+_MEDIA_KINDS = (
+    "sticker",
+    "voice",
+    "video_note",
+    "gif",
+    "video",
+    "audio",
+    "photo",
+    "document",
+    "poll",
+    "contact",
+    "venue",
+    "geo",
+    "dice",
+    "game",
+    "invoice",
+)
+
+
+def media_type(message: Any) -> str | None:
+    """Return the Telethon kind of the attachment, or ``None`` when there is none.
+
+    A link preview is not an attachment.
+    """
+    media = getattr(message, "media", None)
+    if media is None or isinstance(media, types.MessageMediaWebPage):
+        return None
+    for kind in _MEDIA_KINDS:
+        if getattr(message, kind, None):
+            return kind
+    name = type(media).__name__
+    return name.removeprefix("MessageMedia").lower() or "media"
+
+
 def message_body(message: Any) -> str:
-    """Return the text of ``message``, a note for media without text, or ``""``."""
+    """Return the text of ``message`` with a line naming its attachment, or ``""``.
+
+    Attachments are not saved; only their kind is recorded.
+    """
     text = getattr(message, "message", None) or getattr(message, "raw_text", None)
-    if text:
-        return text
-    if getattr(message, "media", None) is not None:
-        return telegram_utils.PROTECTED_MEDIA_NOTE
-    return ""
+    kind = media_type(message)
+    if kind and text:
+        return f"[вложение: {kind}]\n{text}"
+    if kind:
+        return f"[вложение без текста: {kind}, не сохранено]"
+    return text or ""
 
 
 def _free_path(directory: str, filename: str) -> str:

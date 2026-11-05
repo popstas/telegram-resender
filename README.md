@@ -421,8 +421,11 @@ instances:
   titles. An existing name gets a `_2`, `_3`, … suffix.
 - Content: the first line is the `Forwarded from: …` source line (the
   `{source}` placeholder of `message_template`), then the text of every message
-  in the batch in order, separated by blank lines. A message with media and no
-  text becomes a short note; media itself is not saved. `message_template` and
+  in the batch in order, separated by blank lines. Attachments are not saved,
+  only their Telethon kind (`photo`, `video`, `document`, `voice`, `sticker`, …):
+  a caption is preceded by a `[вложение: <kind>]` line, an attachment without
+  text becomes `[вложение без текста: <kind>, не сохранено]`. Link previews are
+  not attachments. `message_template` and
   `forward_message` do not apply to the file.
 - Atomic: the file is written to `.<name>.tmp` in the same directory, synced to
   disk and renamed, so a file under its final name is always complete. Watchers

@@ -98,7 +98,7 @@ pip install -r requirements.txt
   as an owner reply and never cancels a debounce batch.
 - `instances` – list of monitoring instances. Each instance may contain
   `folders`, `chat_ids`, `entities`, `words`, `negative_words`, `ignore_words`, `target_chat`,
-  `target_entity`, `target_webhook`, `folder_mute`, `folder_add_topic`, `false_positive_entity`, `true_positive_entity`,
+  `target_entity`, `target_webhook`, `target_file`, `folder_mute`, `folder_add_topic`, `false_positive_entity`, `true_positive_entity`,
   `no_forward_message`, `once_per_chat`, `reset_hour`, `debounce_ms`, `delete_check_ms`, `ignore_usernames_override`,
   `message_template`, `forward_message`, `cancel_on_owner_reply` and `categories`.
 - `ignore_usernames_override` (per instance) – if defined, this instance ignores the
@@ -392,6 +392,44 @@ Payload formats:
 
 Only `text` and `json` are accepted; any other value is rejected at config
 load time.
+
+## Inbox files (`target_file`)
+
+An instance can also write every forwarded batch to its own Markdown file in
+an inbox directory. A watcher can then pick up each new file, for example to
+start an agent on it. Like `target_webhook`, this runs alongside
+`target_chat` / `target_entity` and never blocks them: write errors are logged
+and swallowed.
+
+```yaml
+instances:
+  - name: Inbox
+    words: [hello]
+    debounce_ms: 120000
+    target_entity: https://t.me/some_bot
+    target_file:
+      dir: /vault/incoming-telegram   # path inside the container
+```
+
+- One batch = one file. Without `debounce_ms` a batch is the single matched
+  message; with it, the trigger plus the messages of the same chat collected
+  during the debounce window.
+- File name: `YYYY-MM-DD_HH-MM-SS_<login or chat>_<msg_id>.md`. The time is the
+  trigger's date in **UTC**, `<login>` is the sender's username (else the chat
+  username, else `chat<id>`), `<msg_id>` is the trigger's message id. Only
+  `[A-Za-z0-9_.-]` is used, so the name is safe in shell arguments and window
+  titles. An existing name gets a `_2`, `_3`, … suffix.
+- Content: the first line is the `Forwarded from: …` source line (the
+  `{source}` placeholder of `message_template`), then the text of every message
+  in the batch in order, separated by blank lines. A message with media and no
+  text becomes a short note; media itself is not saved. `message_template` and
+  `forward_message` do not apply to the file.
+- Atomic: the file is written to `.<name>.tmp` in the same directory, synced to
+  disk and renamed, so a file under its final name is always complete. Watchers
+  should ignore dot files.
+- The resender never edits or deletes inbox files; moving processed files is
+  the consumer's job. The directory must exist: a missing one is logged as an
+  error and nothing is written (so files never land in a non-mounted path).
 
 ## Manual webhook testing
 

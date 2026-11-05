@@ -10,7 +10,7 @@ from telethon.errors import (
     TypeNotFoundError,
 )
 
-from . import categories, langfuse_utils, prompts, telegram_utils, webhook
+from . import categories, langfuse_utils, prompts, target_file, telegram_utils, webhook
 from .categories import CategoryMatch, match_categories
 from .config import (
     Instance,
@@ -116,7 +116,7 @@ async def rescan_loop(instance: Instance, interval: int = 3600) -> None:
         await update_instance_chat_ids(instance, False)
 
 
-PROTECTED_MEDIA_NOTE = "[media from a protected chat: forwarding is disabled there]"
+PROTECTED_MEDIA_NOTE = telegram_utils.PROTECTED_MEDIA_NOTE
 
 
 async def _forward_or_copy(msg, dest):
@@ -245,6 +245,8 @@ async def _forward_messages(
             trigger_message,
             category=used_category.category if used_category else None,
         )
+    if inst.target_file is not None:
+        await target_file.write_batch(inst.target_file, messages, trigger_message)
     return True
 
 

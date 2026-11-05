@@ -112,6 +112,16 @@ Only `name` is truly required; give an instance at least one **source** and one
     `null` when another gate fired; `text` format unchanged).
 - **Ask:** "POST matches to an HTTP endpoint too? URL and format (text/json)?"
 
+### `target_file`
+- **Type:** mapping. **Default:** none. Runs **alongside** the Telegram target, not
+  instead of it. Write errors are logged and swallowed.
+  - `dir` — **required**: inbox directory (path inside the container). Must exist.
+  - One forwarded batch = one file `YYYY-MM-DD_HH-MM-SS_<login or chat>_<msg_id>.md`
+    (UTC time). Content: the `Forwarded from: …` source line, then the message
+    texts of the batch separated by blank lines; media without text → a short note.
+    Written to `.<name>.tmp` and renamed (atomic); existing files are never touched.
+- **Ask:** "Also save each match to a file for a watcher? Which directory?"
+
 ## Forwarding behavior — when to forward
 
 ### `once_per_chat`

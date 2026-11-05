@@ -7,6 +7,7 @@ All notable changes to this project are documented here.
 
 ### Features
 
+- Skip messages deleted before forwarding (delete_check_ms)
 - Copy message text from chats with forwarding disabled
 - stats: Track typesafe_input_tokens for categories gate
 - {url} placeholder in message_template

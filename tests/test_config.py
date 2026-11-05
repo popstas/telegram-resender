@@ -495,3 +495,29 @@ async def test_load_instances_delete_check_ms_invalid(bad):
     cfg = {"instances": [{"name": "inst", "words": [], "delete_check_ms": bad}]}
     with pytest.raises(ValueError, match="delete_check_ms"):
         await config.load_instances(cfg)
+
+
+@pytest.mark.asyncio
+async def test_load_instances_target_file():
+    cfg = {
+        "instances": [
+            {"name": "inst", "words": [], "target_file": {"dir": "/vault/inbox"}}
+        ]
+    }
+    instances = await config.load_instances(cfg)
+    assert instances[0].target_file == config.TargetFile(dir="/vault/inbox")
+
+
+@pytest.mark.asyncio
+async def test_load_instances_target_file_absent_defaults_to_none():
+    cfg = {"instances": [{"name": "inst", "words": []}]}
+    instances = await config.load_instances(cfg)
+    assert instances[0].target_file is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("value", [{}, {"dir": ""}, {"dir": 5}, "/vault/inbox"])
+async def test_load_instances_target_file_requires_dir(value):
+    cfg = {"instances": [{"name": "inst", "words": [], "target_file": value}]}
+    with pytest.raises(ValueError, match="target_file.dir"):
+        await config.load_instances(cfg)

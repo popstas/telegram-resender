@@ -125,5 +125,8 @@ instances:
     # target_webhook:
     #   url: http://127.0.0.1:8002/webhook
     #   format: json
+    # Optional: write each forwarded batch to its own file in an inbox directory.
+    # target_file:
+    #   dir: /vault/incoming-telegram
     false_positive_entity: ""
     true_positive_entity: ""

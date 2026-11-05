@@ -1965,3 +1965,60 @@ async def test_forward_messages_deleted_after_check_sends_no_copy(
     )
     assert sent == [((1, "HEADER"), {})]
     assert forwards == []
+
+
+@pytest.mark.asyncio
+async def test_forward_messages_target_file_survives_telegram_failure(
+    monkeypatch, dummy_message_cls, tmp_path
+):
+    """The batch file is written once, even when sending to Telegram fails."""
+
+    class FailingClient:
+        async def send_message(self, *a, **k):
+            raise RuntimeError("telegram is down")
+
+    app.client = FailingClient()
+    tgu.client = app.client
+
+    inst = app.Instance(
+        name="f",
+        words=["hi"],
+        target_chat=1,
+        target_entity="ent",
+        target_file=config_module.TargetFile(dir=str(tmp_path)),
+    )
+
+    async def fake_text(message, **kwargs):
+        return "HEADER\n\ndo telegram-message-analyze"
+
+    async def fake_get_chat_name(v, safe=False):
+        return "name"
+
+    async def fake_get_message_source(message):
+        return "Forwarded from: private @ivan"
+
+    monkeypatch.setattr(app, "get_forward_message_text", fake_text)
+    monkeypatch.setattr(app, "get_chat_name", fake_get_chat_name)
+    monkeypatch.setattr(tgu, "get_message_source", fake_get_message_source)
+
+    m1 = dummy_message_cls(SimpleNamespace(user_id=7), msg_id=1, text="hi")
+    m2 = dummy_message_cls(SimpleNamespace(user_id=7), msg_id=2, text="there")
+
+    await app._forward_messages(
+        inst,
+        [m1, m2],
+        trigger_message=m1,
+        used_word="hi",
+        used_prompt=None,
+        used_score=0,
+        used_quote=None,
+        used_reasoning=None,
+        used_trace_id=None,
+    )
+
+    files = list(tmp_path.iterdir())
+    assert len(files) == 1
+    assert files[0].name.endswith("_chat7_1.md")
+    assert files[0].read_text(encoding="utf-8") == (
+        "Forwarded from: private @ivan\n\nhi\n\nthere\n"
+    )

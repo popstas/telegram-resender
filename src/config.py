@@ -31,6 +31,13 @@ class TargetWebhook:
 
 
 @dataclass
+class TargetFile:
+    """Configuration for writing each forwarded batch to its own inbox file."""
+
+    dir: str
+
+
+@dataclass
 class CategoriesGate:
     """TypeSafe categories gate: classify a message into named categories."""
 
@@ -52,6 +59,7 @@ class Instance:
     target_chat: int | None = None
     target_entity: str | None = None
     target_webhook: TargetWebhook | None = None
+    target_file: TargetFile | None = None
     false_positive_entity: str | None = None
     true_positive_entity: str | None = None
     folders: List[str] = field(default_factory=list)
@@ -257,6 +265,21 @@ async def load_instances(config: dict) -> List[Instance]:
                 )
             target_webhook = TargetWebhook(url=url, format=fmt)
 
+        target_file_cfg = inst_cfg.get("target_file")
+        target_file: TargetFile | None = None
+        if target_file_cfg is not None:
+            file_dir = (
+                target_file_cfg.get("dir")
+                if isinstance(target_file_cfg, dict)
+                else None
+            )
+            if not isinstance(file_dir, str) or not file_dir:
+                raise ValueError(
+                    "target_file.dir is required when target_file is set, "
+                    f"got {target_file_cfg!r}"
+                )
+            target_file = TargetFile(dir=file_dir)
+
         reset_hour = inst_cfg.get("reset_hour", 6)
         if not isinstance(reset_hour, int) or isinstance(reset_hour, bool):
             raise ValueError(f"reset_hour must be an integer, got {reset_hour!r}")
@@ -359,6 +382,7 @@ async def load_instances(config: dict) -> List[Instance]:
             target_chat=inst_cfg.get("target_chat"),
             target_entity=inst_cfg.get("target_entity"),
             target_webhook=target_webhook,
+            target_file=target_file,
             false_positive_entity=inst_cfg.get("false_positive_entity"),
             true_positive_entity=inst_cfg.get("true_positive_entity"),
             folder_mute=inst_cfg.get("folder_mute", False),

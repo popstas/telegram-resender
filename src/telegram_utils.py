@@ -155,6 +155,10 @@ async def _get_full_sender(message):
         return sender
 
 
+# Body for a message without text whose content cannot be forwarded.
+PROTECTED_MEDIA_NOTE = "[media from a protected chat: forwarding is disabled there]"
+
+
 async def get_message_source(message):
     """Return message source with chat type, name, and optional URL."""
     url = get_message_url(message)

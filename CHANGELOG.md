@@ -7,6 +7,7 @@ All notable changes to this project are documented here.
 
 ### Features
 
+- target_file: Name the attachment kind instead of the protected-chat note
 - Target_file inbox delivery, one file per forwarded batch
 - Skip messages deleted before forwarding (delete_check_ms)
 - Copy message text from chats with forwarding disabled

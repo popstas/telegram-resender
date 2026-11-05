@@ -3,7 +3,7 @@
 All notable changes to this project are documented here.
 
 
-## Unreleased
+## v0.5.0 - 2026-11-05
 
 ### Features
 
@@ -17,6 +17,10 @@ All notable changes to this project are documented here.
 ### Bug Fixes
 
 - Fetch full sender when {username} is missing
+
+### Documentation
+
+- skill: List target_file among instance targets
 
 ### Miscellaneous
 

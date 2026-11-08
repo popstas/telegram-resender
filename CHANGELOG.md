@@ -7,6 +7,7 @@ All notable changes to this project are documented here.
 
 ### Features
 
+- schedule: Watch an instance only inside time windows
 - target_bot: Deliver forwarded batches through a Telegram bot
 
 ## v0.5.0 - 2026-11-05

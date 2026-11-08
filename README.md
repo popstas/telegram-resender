@@ -95,15 +95,16 @@ pip install -r requirements.txt
   (see [Bot delivery](#bot-delivery-target_bot)).
 - `timezone` – (optional) IANA time zone for instance `schedule` windows, e.g.
   `Europe/Belgrade`. Default: the process local time (UTC in the Docker image).
-- `ignore_bots` – (optional, default `false`) drop messages from bots before any
-  instance runs. The rule matches by sender **username ending in "bot"**
+- `ignore_bots` – (optional, default `false`) drop messages from bots in every
+  instance; an instance can set its own `ignore_bots` to override it (e.g.
+  `ignore_bots: false` to watch a bot's announcements). The rule matches by sender **username ending in "bot"**
   (case-insensitive), not by Telegram's bot flag, so e.g. `@abbot` is also dropped.
   It is checked separately from `ignore_usernames`, so a bot message never counts
   as an owner reply and never cancels a debounce batch.
 - `instances` – list of monitoring instances. Each instance may contain
   `folders`, `chat_ids`, `entities`, `words`, `negative_words`, `ignore_words`, `target_chat`,
   `target_entity`, `target_webhook`, `target_file`, `target_bot`, `folder_mute`, `folder_add_topic`, `false_positive_entity`, `true_positive_entity`,
-  `no_forward_message`, `once_per_chat`, `reset_hour`, `debounce_ms`, `delete_check_ms`, `ignore_usernames_override`,
+  `no_forward_message`, `once_per_chat`, `reset_hour`, `debounce_ms`, `delete_check_ms`, `ignore_usernames_override`, `ignore_bots`,
   `message_template`, `forward_message`, `cancel_on_owner_reply`, `categories`, `schedule` and `timezone`.
 - `ignore_usernames_override` (per instance) – if defined, this instance ignores the
   global `ignore_usernames` and uses its own list instead. An empty list (`[]`) means

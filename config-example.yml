@@ -21,7 +21,8 @@ typesafe_api_key: ""
 # bot_token: ""
 # Drop messages from senders whose username ends in "bot" (case-insensitive)
 # before any instance runs. Matches by username, NOT by Telegram's bot flag, so
-# e.g. "@abbot" is also dropped. Default: false.
+# e.g. "@abbot" is also dropped. Default: false. An instance may set its own
+# ignore_bots to override this (e.g. false to watch a bot's announcements).
 ignore_bots: false
 instances:
   - name: default
@@ -97,6 +98,8 @@ instances:
     # If set (even to an empty list), this instance ignores the global list
     # and uses this one. If omitted, the global `ignore_usernames` applies.
     # ignore_usernames_override: []
+    # Optional per-instance override of the global `ignore_bots`.
+    # ignore_bots: false
     words: ["my username"]
     negative_words: []
     ignore_words: []

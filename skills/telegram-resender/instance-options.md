@@ -224,12 +224,14 @@ Precedence: `no_forward_message` → `message_template` → `forward_message` fl
 
 ## Misc
 
-### `ignore_bots` (global, not per instance)
-- **Type:** bool in the top-level config. **Default:** `false`. Drops messages
-  before any instance runs when the sender username ends in "bot"
-  (case-insensitive). Matches by username, **not** Telegram's bot flag, so
-  `@abbot` is also dropped. Does not reset debounce batches.
-- **Ask:** "Ignore messages from bots globally?"
+### `ignore_bots` (global, overridable per instance)
+- **Type:** bool in the top-level config, optional bool per instance. **Default:**
+  `false`; an instance without the key inherits the global value. Drops messages
+  when the sender username ends in "bot" (case-insensitive). Matches by username,
+  **not** Telegram's bot flag, so `@abbot` is also dropped. Does not reset debounce
+  batches.
+- **Ask:** "Ignore messages from bots globally?" — and for an instance whose trigger
+  is posted by a bot (e.g. `@radiot_superbot`): set `ignore_bots: false` on it.
 
 ### `typesafe_api_key` (global, not per instance)
 - **Type:** string in the top-level config. Needed by `categories`; fallback is env

@@ -626,3 +626,23 @@ async def test_load_instances_rejects_bad_global_timezone():
     cfg = {"timezone": "Nowhere/Land", "instances": [{"name": "i", "words": []}]}
     with pytest.raises(ValueError, match="timezone"):
         await config.load_instances(cfg)
+
+
+@pytest.mark.asyncio
+async def test_load_instances_ignore_bots_override():
+    cfg = {
+        "instances": [
+            {"name": "a", "words": [], "ignore_bots": False},
+            {"name": "b", "words": []},
+        ]
+    }
+    a, b = await config.load_instances(cfg)
+    assert a.ignore_bots is False
+    assert b.ignore_bots is None
+
+
+@pytest.mark.asyncio
+async def test_load_instances_ignore_bots_must_be_bool():
+    cfg = {"instances": [{"name": "a", "words": [], "ignore_bots": "no"}]}
+    with pytest.raises(ValueError, match="ignore_bots"):
+        await config.load_instances(cfg)

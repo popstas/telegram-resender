@@ -79,6 +79,7 @@ class Instance:
     folder_mute: bool = False
     no_forward_message: bool = False
     ignore_usernames_override: Optional[List[str]] = None
+    ignore_bots: bool | None = None  # None = use the global ignore_bots
     once_per_chat: bool = False
     reset_hour: int = 6
     debounce_ms: int = 0
@@ -407,6 +408,10 @@ async def load_instances(config: dict) -> List[Instance]:
                 f"got {cancel_on_owner_reply!r}"
             )
 
+        ignore_bots = inst_cfg.get("ignore_bots")
+        if ignore_bots is not None and not isinstance(ignore_bots, bool):
+            raise ValueError(f"ignore_bots must be a boolean, got {ignore_bots!r}")
+
         instance = Instance(
             name=inst_cfg.get("name", "instance"),
             folders=inst_cfg.get("folders", []),
@@ -429,6 +434,7 @@ async def load_instances(config: dict) -> List[Instance]:
                 if "ignore_usernames_override" in inst_cfg
                 else None
             ),
+            ignore_bots=ignore_bots,
             once_per_chat=inst_cfg.get("once_per_chat", False),
             reset_hour=reset_hour,
             debounce_ms=debounce_ms,

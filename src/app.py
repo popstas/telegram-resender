@@ -609,17 +609,19 @@ async def main() -> None:
             logger.debug("Ignoring message from id %s", user_id)
             return
 
-        if (
-            config.get("ignore_bots", False)
-            and username
-            and username.lower().endswith("bot")
-        ):
-            logger.debug("Ignoring bot @%s", username)
-            return
-
+        is_bot = bool(username and username.lower().endswith("bot"))
+        global_ignore_bots = config.get("ignore_bots", False)
         global_ignore = config.get("ignore_usernames", [])
         for inst in instances:
             if event.chat_id not in inst.chat_ids:
+                continue
+            # Checked before ignore_usernames: a bot never counts as an owner
+            # reply, so it never cancels a debounce batch.
+            ignore_bots = (
+                inst.ignore_bots if inst.ignore_bots is not None else global_ignore_bots
+            )
+            if is_bot and ignore_bots:
+                logger.debug("Ignoring bot @%s for instance %s", username, inst.name)
                 continue
             effective_ignore = (
                 inst.ignore_usernames_override

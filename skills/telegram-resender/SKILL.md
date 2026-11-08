@@ -40,7 +40,8 @@ instance-options.md for each option's meaning and allowed values.
 - **Round B — matching:** `words` (trigger terms), `negative_words`, `ignore_words`.
   Explain the semantics below.
 - **Round C — target:** at least one of `target_chat`, `target_entity`,
-  `target_webhook`, `target_file`, `target_bot`.
+  `target_webhook`, `target_file`, `target_bot`. `target_bot` (match arrives from a
+  bot, so it notifies) needs global `bot_token` or `target_bot.token`.
 - **Then ask once:** "Configure advanced options?" If yes, run grouped rounds only
   for the areas the user wants:
   - forwarding *when*: `once_per_chat` (+`reset_hour`), `debounce_ms`
@@ -51,8 +52,9 @@ instance-options.md for each option's meaning and allowed values.
   - AI categorization: `categories` (`instructions`, `forward`, `reject`,
     `threshold`, `model`); needs global `typesafe_api_key`
   - folder automation: `folder_mute`, `folder_add_topic`
-  - misc: `ignore_usernames_override`, `false_positive_entity`,
-    `true_positive_entity`
+  - misc: `ignore_usernames_override`, `ignore_bots` (per-instance override; set
+    `false` when the trigger is posted by a bot and global `ignore_bots` is on),
+    `false_positive_entity`, `true_positive_entity`
 
 ### Edit an instance
 

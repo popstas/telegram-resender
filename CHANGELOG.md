@@ -7,6 +7,7 @@ All notable changes to this project are documented here.
 
 ### Features
 
+- ignore_bots: Allow a per-instance override
 - schedule: Watch an instance only inside time windows
 - target_bot: Deliver forwarded batches through a Telegram bot
 

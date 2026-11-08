@@ -1,6 +1,6 @@
 ---
 name: telegram-resender
-description: Use when adding, editing, or removing a monitoring instance in the telegram-resender data/config.yml, or when the user asks what an instance config option (words, folders, target_chat, debounce_ms, once_per_chat, prompts/threshold, categories, ignore_bots, message_template, forward_message, target_webhook, target_file) means or does.
+description: Use when adding, editing, or removing a monitoring instance in the telegram-resender data/config.yml, or when the user asks what an instance config option (words, folders, target_chat, debounce_ms, once_per_chat, prompts/threshold, categories, ignore_bots, message_template, forward_message, target_webhook, target_file, target_bot) means or does.
 ---
 
 # telegram-resender config
@@ -40,7 +40,7 @@ instance-options.md for each option's meaning and allowed values.
 - **Round B — matching:** `words` (trigger terms), `negative_words`, `ignore_words`.
   Explain the semantics below.
 - **Round C — target:** at least one of `target_chat`, `target_entity`,
-  `target_webhook`, `target_file`.
+  `target_webhook`, `target_file`, `target_bot`.
 - **Then ask once:** "Configure advanced options?" If yes, run grouped rounds only
   for the areas the user wants:
   - forwarding *when*: `once_per_chat` (+`reset_hour`), `debounce_ms`

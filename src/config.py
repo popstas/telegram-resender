@@ -38,6 +38,14 @@ class TargetFile:
 
 
 @dataclass
+class TargetBot:
+    """Configuration for sending matched batches through a Telegram bot."""
+
+    chat_id: int | str
+    token: str
+
+
+@dataclass
 class CategoriesGate:
     """TypeSafe categories gate: classify a message into named categories."""
 
@@ -60,6 +68,7 @@ class Instance:
     target_entity: str | None = None
     target_webhook: TargetWebhook | None = None
     target_file: TargetFile | None = None
+    target_bot: TargetBot | None = None
     false_positive_entity: str | None = None
     true_positive_entity: str | None = None
     folders: List[str] = field(default_factory=list)
@@ -192,8 +201,28 @@ def _parse_categories(cfg: dict | None) -> CategoriesGate | None:
     )
 
 
+def _parse_target_bot(cfg, bot_token: str | None) -> TargetBot | None:
+    """Parse ``target_bot``; the token comes from it or from global ``bot_token``."""
+    if cfg is None:
+        return None
+    chat_id = cfg.get("chat_id") if isinstance(cfg, dict) else None
+    valid_int = isinstance(chat_id, int) and not isinstance(chat_id, bool)
+    if not valid_int and not (isinstance(chat_id, str) and chat_id):
+        raise ValueError(
+            "target_bot.chat_id (int or @username) is required when target_bot "
+            f"is set, got {cfg!r}"
+        )
+    token = cfg.get("token") or bot_token
+    if not isinstance(token, str) or not token:
+        raise ValueError(
+            "target_bot needs a token: set global bot_token or target_bot.token"
+        )
+    return TargetBot(chat_id=chat_id, token=token)
+
+
 async def load_instances(config: dict) -> List[Instance]:
     """Parse instance configurations from config."""
+    bot_token = config.get("bot_token")
     if "instances" not in config:
         config = {
             "instances": [
@@ -279,6 +308,8 @@ async def load_instances(config: dict) -> List[Instance]:
                     f"got {target_file_cfg!r}"
                 )
             target_file = TargetFile(dir=file_dir)
+
+        target_bot = _parse_target_bot(inst_cfg.get("target_bot"), bot_token)
 
         reset_hour = inst_cfg.get("reset_hour", 6)
         if not isinstance(reset_hour, int) or isinstance(reset_hour, bool):
@@ -383,6 +414,7 @@ async def load_instances(config: dict) -> List[Instance]:
             target_entity=inst_cfg.get("target_entity"),
             target_webhook=target_webhook,
             target_file=target_file,
+            target_bot=target_bot,
             false_positive_entity=inst_cfg.get("false_positive_entity"),
             true_positive_entity=inst_cfg.get("true_positive_entity"),
             folder_mute=inst_cfg.get("folder_mute", False),

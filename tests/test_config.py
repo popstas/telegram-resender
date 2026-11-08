@@ -521,3 +521,60 @@ async def test_load_instances_target_file_requires_dir(value):
     cfg = {"instances": [{"name": "inst", "words": [], "target_file": value}]}
     with pytest.raises(ValueError, match="target_file.dir"):
         await config.load_instances(cfg)
+
+
+@pytest.mark.asyncio
+async def test_load_instances_target_bot_global_token():
+    cfg = {
+        "bot_token": "123:abc",
+        "instances": [
+            {"name": "inst", "words": [], "target_bot": {"chat_id": 241225329}}
+        ],
+    }
+    instances = await config.load_instances(cfg)
+    assert instances[0].target_bot == config.TargetBot(
+        chat_id=241225329, token="123:abc"
+    )
+
+
+@pytest.mark.asyncio
+async def test_load_instances_target_bot_instance_token_wins():
+    cfg = {
+        "bot_token": "123:global",
+        "instances": [
+            {
+                "name": "inst",
+                "words": [],
+                "target_bot": {"chat_id": "@channel", "token": "456:own"},
+            }
+        ],
+    }
+    instances = await config.load_instances(cfg)
+    assert instances[0].target_bot == config.TargetBot(
+        chat_id="@channel", token="456:own"
+    )
+
+
+@pytest.mark.asyncio
+async def test_load_instances_target_bot_absent_defaults_to_none():
+    cfg = {"bot_token": "123:abc", "instances": [{"name": "inst", "words": []}]}
+    instances = await config.load_instances(cfg)
+    assert instances[0].target_bot is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("value", [{}, {"chat_id": ""}, {"chat_id": True}, 5])
+async def test_load_instances_target_bot_requires_chat_id(value):
+    cfg = {
+        "bot_token": "123:abc",
+        "instances": [{"name": "inst", "words": [], "target_bot": value}],
+    }
+    with pytest.raises(ValueError, match="target_bot.chat_id"):
+        await config.load_instances(cfg)
+
+
+@pytest.mark.asyncio
+async def test_load_instances_target_bot_requires_token():
+    cfg = {"instances": [{"name": "inst", "words": [], "target_bot": {"chat_id": 1}}]}
+    with pytest.raises(ValueError, match="bot_token"):
+        await config.load_instances(cfg)

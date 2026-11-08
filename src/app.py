@@ -10,7 +10,15 @@ from telethon.errors import (
     TypeNotFoundError,
 )
 
-from . import categories, langfuse_utils, prompts, target_file, telegram_utils, webhook
+from . import (
+    categories,
+    langfuse_utils,
+    prompts,
+    target_bot,
+    target_file,
+    telegram_utils,
+    webhook,
+)
 from .categories import CategoryMatch, match_categories
 from .config import (
     Instance,
@@ -194,6 +202,7 @@ async def _forward_messages(
     source_name = await get_chat_name(
         getattr(trigger_message, "chat_id", None), safe=True
     )
+    text = None
     try:
         if not inst.no_forward_message:
             text = await get_forward_message_text(
@@ -247,6 +256,10 @@ async def _forward_messages(
         )
     if inst.target_file is not None:
         await target_file.write_batch(inst.target_file, messages, trigger_message)
+    if inst.target_bot is not None:
+        await target_bot.send_batch(
+            inst.target_bot, text, messages, proxy_url=config.get("proxy_url")
+        )
     return True
 
 

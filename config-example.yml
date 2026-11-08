@@ -13,6 +13,9 @@ ignore_user_ids: []
 # TypeSafe API key for the per-instance `categories` gate (fallback: env
 # TYPESAFE_API_KEY).
 typesafe_api_key: ""
+# Telegram bot token for instances with `target_bot` (messages sent by a bot
+# notify you, forwards from your own account do not).
+# bot_token: ""
 # Drop messages from senders whose username ends in "bot" (case-insensitive)
 # before any instance runs. Matches by username, NOT by Telegram's bot flag, so
 # e.g. "@abbot" is also dropped. Default: false.
@@ -128,5 +131,12 @@ instances:
     # Optional: write each forwarded batch to its own file in an inbox directory.
     # target_file:
     #   dir: /vault/incoming-telegram
+    # Optional: send each forwarded batch through a Telegram bot, so it notifies
+    # you. One plain-text message: preface, then each text and its link.
+    # chat_id: your user id (press Start in the bot first) or @channel.
+    # token defaults to the global bot_token.
+    # target_bot:
+    #   chat_id: 241225329
+    #   token: ""
     false_positive_entity: ""
     true_positive_entity: ""

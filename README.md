@@ -91,6 +91,8 @@ pip install -r requirements.txt
 - `ignore_user_ids` – list of user IDs to ignore when processing messages.
 - `typesafe_api_key` – (optional) TypeSafe API key for the `categories` gate
   (fallback: environment variable `TYPESAFE_API_KEY`).
+- `bot_token` – (optional) Telegram bot token used by instances with `target_bot`
+  (see [Bot delivery](#bot-delivery-target_bot)).
 - `ignore_bots` – (optional, default `false`) drop messages from bots before any
   instance runs. The rule matches by sender **username ending in "bot"**
   (case-insensitive), not by Telegram's bot flag, so e.g. `@abbot` is also dropped.
@@ -98,7 +100,7 @@ pip install -r requirements.txt
   as an owner reply and never cancels a debounce batch.
 - `instances` – list of monitoring instances. Each instance may contain
   `folders`, `chat_ids`, `entities`, `words`, `negative_words`, `ignore_words`, `target_chat`,
-  `target_entity`, `target_webhook`, `target_file`, `folder_mute`, `folder_add_topic`, `false_positive_entity`, `true_positive_entity`,
+  `target_entity`, `target_webhook`, `target_file`, `target_bot`, `folder_mute`, `folder_add_topic`, `false_positive_entity`, `true_positive_entity`,
   `no_forward_message`, `once_per_chat`, `reset_hour`, `debounce_ms`, `delete_check_ms`, `ignore_usernames_override`,
   `message_template`, `forward_message`, `cancel_on_owner_reply` and `categories`.
 - `ignore_usernames_override` (per instance) – if defined, this instance ignores the
@@ -433,6 +435,39 @@ instances:
 - The resender never edits or deletes inbox files; moving processed files is
   the consumer's job. The directory must exist: a missing one is logged as an
   error and nothing is written (so files never land in a non-mounted path).
+
+## Bot delivery (`target_bot`)
+
+Forwards made from your own account do not notify you. An instance with
+`target_bot` sends each forwarded batch through a Telegram bot instead, so the
+message arrives from the bot and your phone rings. It runs alongside
+`target_chat` / `target_entity`; leave those out to get the match only from the
+bot.
+
+```yaml
+bot_token: "123456:ABC..."        # global, from @BotFather
+instances:
+  - name: radiot
+    entities: [https://t.me/radio_t_chat]
+    words: ["Вещание началось. Приобщиться можно тут"]
+    target_bot:
+      chat_id: 241225329          # your user id: start a chat with the bot first
+      # token: "654321:XYZ..."    # optional, overrides the global bot_token
+```
+
+- `chat_id` is required: a numeric id or a `@channel` username. A user must
+  have pressed **Start** in the bot once, otherwise Telegram answers
+  `chat not found`.
+- The token is `target_bot.token`, else the global `bot_token`; a `target_bot`
+  without either is rejected at config load.
+- The bot is not a member of the source chat, so it cannot forward the
+  original. It sends one plain-text message per batch: the usual preface
+  (`message_template` / `forward_message` / `no_forward_message` apply), then
+  each message's text and its link (`t.me/<chat>/<id>` for a public chat,
+  `t.me/c/<id>/<msg>` otherwise). Attachments are not sent. Longer than 4096
+  characters is cut.
+- Requests go through `proxy_url` when it is set. Errors are logged (the token
+  is masked) and swallowed.
 
 ## Manual webhook testing
 

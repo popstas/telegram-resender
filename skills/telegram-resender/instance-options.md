@@ -124,6 +124,19 @@ Only `name` is truly required; give an instance at least one **source** and one
     Written to `.<name>.tmp` and renamed (atomic); existing files are never touched.
 - **Ask:** "Also save each match to a file for a watcher? Which directory?"
 
+### `target_bot`
+- **Type:** mapping. **Default:** none. Sends each forwarded batch **from a bot**, so
+  the owner gets a notification (forwards from the own account do not notify).
+  Can be the only target (no `target_chat` / `target_entity`). Errors are logged
+  and swallowed; the token is masked in logs.
+  - `chat_id` — **required**: int user/chat id or `@channel`. The user must have
+    pressed Start in the bot.
+  - `token` — optional; defaults to the global `bot_token`. Neither set → rejected at load.
+  - The bot cannot forward the original: one plain-text message = preface, then each
+    message text + link. Attachments are not sent; text is cut at 4096 chars.
+    Goes through `proxy_url` when set.
+- **Ask:** "Should the match arrive from a bot so you get a notification? Which chat_id?"
+
 ## Forwarding behavior — when to forward
 
 ### `once_per_chat`

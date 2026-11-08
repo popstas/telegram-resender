@@ -13,6 +13,9 @@ ignore_user_ids: []
 # TypeSafe API key for the per-instance `categories` gate (fallback: env
 # TYPESAFE_API_KEY).
 typesafe_api_key: ""
+# IANA time zone for instance `schedule` windows (default: process local time,
+# UTC in the Docker image). An instance may set its own `timezone`.
+# timezone: Europe/Belgrade
 # Telegram bot token for instances with `target_bot` (messages sent by a bot
 # notify you, forwards from your own account do not).
 # bot_token: ""
@@ -81,6 +84,15 @@ instances:
     # forwarded at all, header and webhook included. With debounce_ms the
     # check runs after the debounce window. Default: 0 (no check).
     delete_check_ms: 0
+    # Watch this instance only inside these windows (any one matches). Outside
+    # them messages are skipped before any check and not counted. from is
+    # inclusive, to exclusive; to < from runs past midnight. days: mon..sun,
+    # omit for every day. Default: no schedule (always on).
+    # schedule:
+    #   - days: [sat]
+    #     from: "20:55"
+    #     to: "21:30"
+    # timezone: Europe/Belgrade  # overrides the global timezone
     # Optional per-instance override of the global `ignore_usernames`.
     # If set (even to an empty list), this instance ignores the global list
     # and uses this one. If omitted, the global `ignore_usernames` applies.

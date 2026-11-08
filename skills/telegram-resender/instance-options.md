@@ -139,6 +139,20 @@ Only `name` is truly required; give an instance at least one **source** and one
 
 ## Forwarding behavior — when to forward
 
+### `schedule`
+- **Type:** list of windows. **Default:** none (always on). Watch the instance only
+  inside the windows (any one matches); outside them messages are skipped before any
+  check and are not counted in stats.
+  - window: `days` (list of `mon`..`sun`, omit = every day), `from` / `to` as
+    `"HH:MM"`. `from` inclusive, `to` exclusive; `to` < `from` runs past midnight
+    and belongs to the start day. `from` == `to`, bad times or days → rejected at load.
+- **Ask:** "Watch only at certain times? Which days and from–to?"
+
+### `timezone`
+- **Type:** IANA zone string (`Europe/Belgrade`). **Default:** global `timezone`, else
+  process local time (UTC in Docker). Used by `schedule`. Unknown zone → rejected at load.
+- **Ask (with schedule):** "Which time zone are these times in?"
+
 ### `once_per_chat`
 - **Type:** bool. **Default:** `false`. Forward only the **first** match per chat
   per day, then suppress until the reset hour. State in `data/seen_chats.json`

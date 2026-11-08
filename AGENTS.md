@@ -23,6 +23,7 @@ This project forwards Telegram messages that match specific rules to a target ch
 │   ├── trace_ids.py      # trace ID storage
 │   ├── seen_chats.py     # once_per_chat dedup state (data/seen_chats.json)
 │   ├── debounce.py       # debounce_ms per-chat batching
+│   ├── schedule.py       # schedule/timezone monitoring windows
 │   ├── telegram_utils.py # Telegram helpers
 │   ├── generate_evals.py # build eval datasets
 │   ├── bulk.py           # bulk operations CLI

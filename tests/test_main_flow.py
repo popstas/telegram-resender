@@ -2107,3 +2107,49 @@ async def test_forward_messages_target_bot_no_header_when_suppressed(
         used_trace_id=None,
     )
     assert calls == [(None, None)]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("active,expected", [(True, 1), (False, 0)])
+async def test_process_message_respects_schedule(
+    monkeypatch, dummy_message_cls, tmp_path, active, expected
+):
+    """Outside the schedule a message is not checked, forwarded or counted."""
+    from datetime import time
+
+    from src.schedule import ScheduleWindow
+
+    class DummyClient:
+        async def send_message(self, *a, **k):
+            pass
+
+    app.client = DummyClient()
+    tgu.client = app.client
+    app.stats = stats_module.StatsTracker(
+        str(tmp_path / "stats.json"), flush_interval=0
+    )
+    window = ScheduleWindow(days=frozenset({5}), start=time(20, 55), end=time(21, 30))
+    inst = app.Instance(name="s", words=["hi"], target_chat=1, schedule=[window])
+
+    seen = []
+
+    def fake_is_active(windows, tz, now=None):
+        seen.append((windows, tz))
+        return active
+
+    async def fake_text(message, **kwargs):
+        return "HEADER"
+
+    async def fake_get_chat_name(v, safe=False):
+        return "n"
+
+    monkeypatch.setattr(app.schedule, "is_active", fake_is_active)
+    monkeypatch.setattr(app, "get_forward_message_text", fake_text)
+    monkeypatch.setattr(app, "get_chat_name", fake_get_chat_name)
+
+    msg = dummy_message_cls(SimpleNamespace(channel_id=1), msg_id=9, text="hi")
+    await app.process_message(inst, SimpleNamespace(message=msg, chat_id=1))
+
+    assert seen == [([window], None)]
+    assert len(msg.forwarded) == expected
+    assert app.stats.data["stats"].get("total", 0) == expected

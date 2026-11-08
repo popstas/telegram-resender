@@ -578,3 +578,51 @@ async def test_load_instances_target_bot_requires_token():
     cfg = {"instances": [{"name": "inst", "words": [], "target_bot": {"chat_id": 1}}]}
     with pytest.raises(ValueError, match="bot_token"):
         await config.load_instances(cfg)
+
+
+@pytest.mark.asyncio
+async def test_load_instances_schedule_and_instance_timezone():
+    from datetime import time
+    from zoneinfo import ZoneInfo
+
+    from src.schedule import ScheduleWindow
+
+    cfg = {
+        "timezone": "UTC",
+        "instances": [
+            {
+                "name": "radiot",
+                "words": [],
+                "schedule": [{"days": ["sat"], "from": "20:55", "to": "21:30"}],
+                "timezone": "Europe/Belgrade",
+            }
+        ],
+    }
+    inst = (await config.load_instances(cfg))[0]
+    assert inst.schedule == [
+        ScheduleWindow(days=frozenset({5}), start=time(20, 55), end=time(21, 30))
+    ]
+    assert inst.timezone == ZoneInfo("Europe/Belgrade")
+
+
+@pytest.mark.asyncio
+async def test_load_instances_timezone_falls_back_to_global():
+    from zoneinfo import ZoneInfo
+
+    cfg = {"timezone": "Europe/Belgrade", "instances": [{"name": "i", "words": []}]}
+    inst = (await config.load_instances(cfg))[0]
+    assert inst.schedule == []
+    assert inst.timezone == ZoneInfo("Europe/Belgrade")
+
+
+@pytest.mark.asyncio
+async def test_load_instances_no_timezone_defaults_to_none():
+    inst = (await config.load_instances({"instances": [{"name": "i", "words": []}]}))[0]
+    assert inst.timezone is None
+
+
+@pytest.mark.asyncio
+async def test_load_instances_rejects_bad_global_timezone():
+    cfg = {"timezone": "Nowhere/Land", "instances": [{"name": "i", "words": []}]}
+    with pytest.raises(ValueError, match="timezone"):
+        await config.load_instances(cfg)

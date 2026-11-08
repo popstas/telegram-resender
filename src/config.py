@@ -3,10 +3,12 @@ import re
 from dataclasses import dataclass, field
 from typing import List, Optional, Set
 from urllib.parse import urlparse
+from zoneinfo import ZoneInfo
 
 import yaml
 
 from .prompts import Prompt
+from .schedule import ScheduleWindow, parse_schedule, parse_timezone
 from .telegram_utils import _safe_format
 
 # Allow overriding config path via environment variable
@@ -91,6 +93,8 @@ class Instance:
     prompts: List[Prompt] = field(default_factory=list)
     folder_add_topic: List[FolderTopic] = field(default_factory=list)
     categories: CategoriesGate | None = None
+    schedule: List[ScheduleWindow] = field(default_factory=list)
+    timezone: ZoneInfo | None = None
 
 
 def parse_proxy(proxy_url: str) -> Optional[tuple]:
@@ -223,6 +227,7 @@ def _parse_target_bot(cfg, bot_token: str | None) -> TargetBot | None:
 async def load_instances(config: dict) -> List[Instance]:
     """Parse instance configurations from config."""
     bot_token = config.get("bot_token")
+    global_tz = parse_timezone(config.get("timezone"))
     if "instances" not in config:
         config = {
             "instances": [
@@ -438,6 +443,12 @@ async def load_instances(config: dict) -> List[Instance]:
             prompts=parsed_prompts,
             folder_add_topic=folder_topics,
             categories=_parse_categories(inst_cfg.get("categories")),
+            schedule=parse_schedule(inst_cfg.get("schedule")),
+            timezone=(
+                parse_timezone(inst_cfg["timezone"])
+                if "timezone" in inst_cfg
+                else global_tz
+            ),
         )
         parsed_instances.append(instance)
     return parsed_instances

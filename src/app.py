@@ -14,6 +14,7 @@ from . import (
     categories,
     langfuse_utils,
     prompts,
+    schedule,
     target_bot,
     target_file,
     telegram_utils,
@@ -343,6 +344,11 @@ async def _debounce_message(
 async def process_message(inst: Instance, event: events.NewMessage.Event) -> None:
     """Handle a new message for a specific instance."""
     message = event.message
+    if not schedule.is_active(inst.schedule, inst.timezone):
+        logger.debug(
+            "Ignoring message %s for %s: outside its schedule", message.id, inst.name
+        )
+        return
     if message.raw_text and word_in_text(inst.ignore_words, message.raw_text):
         logger.debug(
             "Ignoring message %s for %s due to ignore_words",

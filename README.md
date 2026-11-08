@@ -93,6 +93,8 @@ pip install -r requirements.txt
   (fallback: environment variable `TYPESAFE_API_KEY`).
 - `bot_token` – (optional) Telegram bot token used by instances with `target_bot`
   (see [Bot delivery](#bot-delivery-target_bot)).
+- `timezone` – (optional) IANA time zone for instance `schedule` windows, e.g.
+  `Europe/Belgrade`. Default: the process local time (UTC in the Docker image).
 - `ignore_bots` – (optional, default `false`) drop messages from bots before any
   instance runs. The rule matches by sender **username ending in "bot"**
   (case-insensitive), not by Telegram's bot flag, so e.g. `@abbot` is also dropped.
@@ -102,7 +104,7 @@ pip install -r requirements.txt
   `folders`, `chat_ids`, `entities`, `words`, `negative_words`, `ignore_words`, `target_chat`,
   `target_entity`, `target_webhook`, `target_file`, `target_bot`, `folder_mute`, `folder_add_topic`, `false_positive_entity`, `true_positive_entity`,
   `no_forward_message`, `once_per_chat`, `reset_hour`, `debounce_ms`, `delete_check_ms`, `ignore_usernames_override`,
-  `message_template`, `forward_message`, `cancel_on_owner_reply` and `categories`.
+  `message_template`, `forward_message`, `cancel_on_owner_reply`, `categories`, `schedule` and `timezone`.
 - `ignore_usernames_override` (per instance) – if defined, this instance ignores the
   global `ignore_usernames` and uses its own list instead. An empty list (`[]`) means
   the instance ignores no usernames. Omit the key to inherit the global list.
@@ -187,6 +189,33 @@ instances:
     debounce_ms: 60000
     cancel_on_owner_reply: true   # default; set false to always deliver
 ```
+
+## Monitoring windows (`schedule`)
+
+An instance with `schedule` watches its chats only at the given times. Outside
+every window its messages are skipped before any check: no words, prompts or
+categories run, nothing is forwarded or counted in stats. Without `schedule`
+the instance is always on.
+
+```yaml
+timezone: Europe/Belgrade        # global; an instance can override it
+instances:
+  - name: radiot
+    schedule:
+      - days: [sat]              # mon tue wed thu fri sat sun; omit = every day
+        from: "20:55"            # inclusive
+        to: "21:30"              # exclusive
+```
+
+- Times are read in the instance `timezone`, else the global `timezone`, else the
+  process local time. The Docker image runs in UTC, so set `timezone` when you
+  think in local time.
+- Several windows may be listed; any one of them makes the instance active.
+- A window with `to` earlier than `from` runs past midnight and belongs to the
+  day it starts on: `days: [fri], from: "23:00", to: "01:00"` covers Friday
+  23:00 to Saturday 01:00.
+- Malformed times, unknown days or zones, and `from` equal to `to` are rejected at
+  config load.
 
 ## Categories gate (TypeSafe)
 

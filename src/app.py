@@ -10,7 +10,16 @@ from telethon.errors import (
     TypeNotFoundError,
 )
 
-from . import categories, langfuse_utils, prompts, target_file, telegram_utils, webhook
+from . import (
+    categories,
+    langfuse_utils,
+    prompts,
+    schedule,
+    target_bot,
+    target_file,
+    telegram_utils,
+    webhook,
+)
 from .categories import CategoryMatch, match_categories
 from .config import (
     Instance,
@@ -194,6 +203,7 @@ async def _forward_messages(
     source_name = await get_chat_name(
         getattr(trigger_message, "chat_id", None), safe=True
     )
+    text = None
     try:
         if not inst.no_forward_message:
             text = await get_forward_message_text(
@@ -247,6 +257,10 @@ async def _forward_messages(
         )
     if inst.target_file is not None:
         await target_file.write_batch(inst.target_file, messages, trigger_message)
+    if inst.target_bot is not None:
+        await target_bot.send_batch(
+            inst.target_bot, text, messages, proxy_url=config.get("proxy_url")
+        )
     return True
 
 
@@ -330,6 +344,11 @@ async def _debounce_message(
 async def process_message(inst: Instance, event: events.NewMessage.Event) -> None:
     """Handle a new message for a specific instance."""
     message = event.message
+    if not schedule.is_active(inst.schedule, inst.timezone):
+        logger.debug(
+            "Ignoring message %s for %s: outside its schedule", message.id, inst.name
+        )
+        return
     if message.raw_text and word_in_text(inst.ignore_words, message.raw_text):
         logger.debug(
             "Ignoring message %s for %s due to ignore_words",
@@ -590,17 +609,19 @@ async def main() -> None:
             logger.debug("Ignoring message from id %s", user_id)
             return
 
-        if (
-            config.get("ignore_bots", False)
-            and username
-            and username.lower().endswith("bot")
-        ):
-            logger.debug("Ignoring bot @%s", username)
-            return
-
+        is_bot = bool(username and username.lower().endswith("bot"))
+        global_ignore_bots = config.get("ignore_bots", False)
         global_ignore = config.get("ignore_usernames", [])
         for inst in instances:
             if event.chat_id not in inst.chat_ids:
+                continue
+            # Checked before ignore_usernames: a bot never counts as an owner
+            # reply, so it never cancels a debounce batch.
+            ignore_bots = (
+                inst.ignore_bots if inst.ignore_bots is not None else global_ignore_bots
+            )
+            if is_bot and ignore_bots:
+                logger.debug("Ignoring bot @%s for instance %s", username, inst.name)
                 continue
             effective_ignore = (
                 inst.ignore_usernames_override

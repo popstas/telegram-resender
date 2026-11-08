@@ -91,16 +91,21 @@ pip install -r requirements.txt
 - `ignore_user_ids` – list of user IDs to ignore when processing messages.
 - `typesafe_api_key` – (optional) TypeSafe API key for the `categories` gate
   (fallback: environment variable `TYPESAFE_API_KEY`).
-- `ignore_bots` – (optional, default `false`) drop messages from bots before any
-  instance runs. The rule matches by sender **username ending in "bot"**
+- `bot_token` – (optional) Telegram bot token used by instances with `target_bot`
+  (see [Bot delivery](#bot-delivery-target_bot)).
+- `timezone` – (optional) IANA time zone for instance `schedule` windows, e.g.
+  `Europe/Belgrade`. Default: the process local time (UTC in the Docker image).
+- `ignore_bots` – (optional, default `false`) drop messages from bots in every
+  instance; an instance can set its own `ignore_bots` to override it (e.g.
+  `ignore_bots: false` to watch a bot's announcements). The rule matches by sender **username ending in "bot"**
   (case-insensitive), not by Telegram's bot flag, so e.g. `@abbot` is also dropped.
   It is checked separately from `ignore_usernames`, so a bot message never counts
   as an owner reply and never cancels a debounce batch.
 - `instances` – list of monitoring instances. Each instance may contain
   `folders`, `chat_ids`, `entities`, `words`, `negative_words`, `ignore_words`, `target_chat`,
-  `target_entity`, `target_webhook`, `target_file`, `folder_mute`, `folder_add_topic`, `false_positive_entity`, `true_positive_entity`,
-  `no_forward_message`, `once_per_chat`, `reset_hour`, `debounce_ms`, `delete_check_ms`, `ignore_usernames_override`,
-  `message_template`, `forward_message`, `cancel_on_owner_reply` and `categories`.
+  `target_entity`, `target_webhook`, `target_file`, `target_bot`, `folder_mute`, `folder_add_topic`, `false_positive_entity`, `true_positive_entity`,
+  `no_forward_message`, `once_per_chat`, `reset_hour`, `debounce_ms`, `delete_check_ms`, `ignore_usernames_override`, `ignore_bots`,
+  `message_template`, `forward_message`, `cancel_on_owner_reply`, `categories`, `schedule` and `timezone`.
 - `ignore_usernames_override` (per instance) – if defined, this instance ignores the
   global `ignore_usernames` and uses its own list instead. An empty list (`[]`) means
   the instance ignores no usernames. Omit the key to inherit the global list.
@@ -185,6 +190,33 @@ instances:
     debounce_ms: 60000
     cancel_on_owner_reply: true   # default; set false to always deliver
 ```
+
+## Monitoring windows (`schedule`)
+
+An instance with `schedule` watches its chats only at the given times. Outside
+every window its messages are skipped before any check: no words, prompts or
+categories run, nothing is forwarded or counted in stats. Without `schedule`
+the instance is always on.
+
+```yaml
+timezone: Europe/Belgrade        # global; an instance can override it
+instances:
+  - name: radiot
+    schedule:
+      - days: [sat]              # mon tue wed thu fri sat sun; omit = every day
+        from: "20:55"            # inclusive
+        to: "21:30"              # exclusive
+```
+
+- Times are read in the instance `timezone`, else the global `timezone`, else the
+  process local time. The Docker image runs in UTC, so set `timezone` when you
+  think in local time.
+- Several windows may be listed; any one of them makes the instance active.
+- A window with `to` earlier than `from` runs past midnight and belongs to the
+  day it starts on: `days: [fri], from: "23:00", to: "01:00"` covers Friday
+  23:00 to Saturday 01:00.
+- Malformed times, unknown days or zones, and `from` equal to `to` are rejected at
+  config load.
 
 ## Categories gate (TypeSafe)
 
@@ -433,6 +465,39 @@ instances:
 - The resender never edits or deletes inbox files; moving processed files is
   the consumer's job. The directory must exist: a missing one is logged as an
   error and nothing is written (so files never land in a non-mounted path).
+
+## Bot delivery (`target_bot`)
+
+Forwards made from your own account do not notify you. An instance with
+`target_bot` sends each forwarded batch through a Telegram bot instead, so the
+message arrives from the bot and your phone rings. It runs alongside
+`target_chat` / `target_entity`; leave those out to get the match only from the
+bot.
+
+```yaml
+bot_token: "123456:ABC..."        # global, from @BotFather
+instances:
+  - name: radiot
+    entities: [https://t.me/radio_t_chat]
+    words: ["Вещание началось. Приобщиться можно тут"]
+    target_bot:
+      chat_id: 241225329          # your user id: start a chat with the bot first
+      # token: "654321:XYZ..."    # optional, overrides the global bot_token
+```
+
+- `chat_id` is required: a numeric id or a `@channel` username. A user must
+  have pressed **Start** in the bot once, otherwise Telegram answers
+  `chat not found`.
+- The token is `target_bot.token`, else the global `bot_token`; a `target_bot`
+  without either is rejected at config load.
+- The bot is not a member of the source chat, so it cannot forward the
+  original. It sends one plain-text message per batch: the usual preface
+  (`message_template` / `forward_message` / `no_forward_message` apply), then
+  each message's text and its link (`t.me/<chat>/<id>` for a public chat,
+  `t.me/c/<id>/<msg>` otherwise). Attachments are not sent. Longer than 4096
+  characters is cut.
+- Requests go through `proxy_url` when it is set. Errors are logged (the token
+  is masked) and swallowed.
 
 ## Manual webhook testing
 

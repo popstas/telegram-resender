@@ -358,3 +358,61 @@ async def test_ignore_bots_human_ending_in_bot(
         username="abbot",
     )
     assert processed == []
+
+
+@pytest.mark.asyncio
+async def test_instance_ignore_bots_false_overrides_global(
+    monkeypatch, dummy_tg_client, dummy_message_cls, tmp_path
+):
+    """An instance watching a bot's announcements opts out of global ignore_bots."""
+    processed = await _run_bot_case(
+        monkeypatch,
+        dummy_tg_client,
+        dummy_message_cls,
+        tmp_path,
+        config={"ignore_bots": True},
+        username="radiot_superbot",
+        inst_kwargs={"ignore_bots": False},
+    )
+    assert len(processed) == 1
+
+
+@pytest.mark.asyncio
+async def test_instance_ignore_bots_true_without_global(
+    monkeypatch, dummy_tg_client, dummy_message_cls, tmp_path
+):
+    processed = await _run_bot_case(
+        monkeypatch,
+        dummy_tg_client,
+        dummy_message_cls,
+        tmp_path,
+        config={},
+        username="x_bot",
+        inst_kwargs={"ignore_bots": True},
+    )
+    assert processed == []
+
+
+@pytest.mark.asyncio
+async def test_instance_ignore_bots_override_does_not_cancel_debounce(
+    monkeypatch, dummy_tg_client, dummy_message_cls, tmp_path
+):
+    cancelled = []
+    mgr = DebounceManager(clock=lambda: 0.0, scheduler=_FakeScheduler())
+    monkeypatch.setattr(mgr, "cancel", lambda key: cancelled.append(key))
+    processed = await _run_bot_case(
+        monkeypatch,
+        dummy_tg_client,
+        dummy_message_cls,
+        tmp_path,
+        config={"ignore_usernames": ["some_helper_bot"]},
+        username="some_helper_bot",
+        inst_kwargs={
+            "ignore_bots": True,
+            "debounce_ms": 1000,
+            "cancel_on_owner_reply": True,
+        },
+        mgr=mgr,
+    )
+    assert processed == []
+    assert cancelled == []

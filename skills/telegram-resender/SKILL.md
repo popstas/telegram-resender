@@ -1,6 +1,6 @@
 ---
 name: telegram-resender
-description: Use when adding, editing, or removing a monitoring instance in the telegram-resender data/config.yml, or when the user asks what an instance config option (words, folders, target_chat, debounce_ms, once_per_chat, prompts/threshold, categories, ignore_bots, message_template, forward_message, target_webhook, target_file) means or does.
+description: Use when adding, editing, or removing a monitoring instance in the telegram-resender data/config.yml, or when the user asks what an instance config option (words, folders, target_chat, debounce_ms, once_per_chat, prompts/threshold, categories, ignore_bots, message_template, forward_message, target_webhook, target_file, target_bot, schedule, timezone) means or does.
 ---
 
 # telegram-resender config
@@ -40,19 +40,21 @@ instance-options.md for each option's meaning and allowed values.
 - **Round B — matching:** `words` (trigger terms), `negative_words`, `ignore_words`.
   Explain the semantics below.
 - **Round C — target:** at least one of `target_chat`, `target_entity`,
-  `target_webhook`, `target_file`.
+  `target_webhook`, `target_file`, `target_bot`. `target_bot` (match arrives from a
+  bot, so it notifies) needs global `bot_token` or `target_bot.token`.
 - **Then ask once:** "Configure advanced options?" If yes, run grouped rounds only
   for the areas the user wants:
   - forwarding *when*: `once_per_chat` (+`reset_hour`), `debounce_ms`
-    (+`cancel_on_owner_reply`)
+    (+`cancel_on_owner_reply`), `schedule` (+`timezone`)
   - forwarded-message preface: `no_forward_message` / `message_template` /
     `forward_message` (`show_trigger`, `show_category`, `show_source`, `prefix`, `suffix`)
   - AI scoring: `prompts` (`name`, `prompt`, `threshold`, optional Langfuse keys)
   - AI categorization: `categories` (`instructions`, `forward`, `reject`,
     `threshold`, `model`); needs global `typesafe_api_key`
   - folder automation: `folder_mute`, `folder_add_topic`
-  - misc: `ignore_usernames_override`, `false_positive_entity`,
-    `true_positive_entity`
+  - misc: `ignore_usernames_override`, `ignore_bots` (per-instance override; set
+    `false` when the trigger is posted by a bot and global `ignore_bots` is on),
+    `false_positive_entity`, `true_positive_entity`
 
 ### Edit an instance
 

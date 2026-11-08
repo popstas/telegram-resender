@@ -124,7 +124,34 @@ Only `name` is truly required; give an instance at least one **source** and one
     Written to `.<name>.tmp` and renamed (atomic); existing files are never touched.
 - **Ask:** "Also save each match to a file for a watcher? Which directory?"
 
+### `target_bot`
+- **Type:** mapping. **Default:** none. Sends each forwarded batch **from a bot**, so
+  the owner gets a notification (forwards from the own account do not notify).
+  Can be the only target (no `target_chat` / `target_entity`). Errors are logged
+  and swallowed; the token is masked in logs.
+  - `chat_id` — **required**: int user/chat id or `@channel`. The user must have
+    pressed Start in the bot.
+  - `token` — optional; defaults to the global `bot_token`. Neither set → rejected at load.
+  - The bot cannot forward the original: one plain-text message = preface, then each
+    message text + link. Attachments are not sent; text is cut at 4096 chars.
+    Goes through `proxy_url` when set.
+- **Ask:** "Should the match arrive from a bot so you get a notification? Which chat_id?"
+
 ## Forwarding behavior — when to forward
+
+### `schedule`
+- **Type:** list of windows. **Default:** none (always on). Watch the instance only
+  inside the windows (any one matches); outside them messages are skipped before any
+  check and are not counted in stats.
+  - window: `days` (list of `mon`..`sun`, omit = every day), `from` / `to` as
+    `"HH:MM"`. `from` inclusive, `to` exclusive; `to` < `from` runs past midnight
+    and belongs to the start day. `from` == `to`, bad times or days → rejected at load.
+- **Ask:** "Watch only at certain times? Which days and from–to?"
+
+### `timezone`
+- **Type:** IANA zone string (`Europe/Belgrade`). **Default:** global `timezone`, else
+  process local time (UTC in Docker). Used by `schedule`. Unknown zone → rejected at load.
+- **Ask (with schedule):** "Which time zone are these times in?"
 
 ### `once_per_chat`
 - **Type:** bool. **Default:** `false`. Forward only the **first** match per chat
@@ -197,12 +224,14 @@ Precedence: `no_forward_message` → `message_template` → `forward_message` fl
 
 ## Misc
 
-### `ignore_bots` (global, not per instance)
-- **Type:** bool in the top-level config. **Default:** `false`. Drops messages
-  before any instance runs when the sender username ends in "bot"
-  (case-insensitive). Matches by username, **not** Telegram's bot flag, so
-  `@abbot` is also dropped. Does not reset debounce batches.
-- **Ask:** "Ignore messages from bots globally?"
+### `ignore_bots` (global, overridable per instance)
+- **Type:** bool in the top-level config, optional bool per instance. **Default:**
+  `false`; an instance without the key inherits the global value. Drops messages
+  when the sender username ends in "bot" (case-insensitive). Matches by username,
+  **not** Telegram's bot flag, so `@abbot` is also dropped. Does not reset debounce
+  batches.
+- **Ask:** "Ignore messages from bots globally?" — and for an instance whose trigger
+  is posted by a bot (e.g. `@radiot_superbot`): set `ignore_bots: false` on it.
 
 ### `typesafe_api_key` (global, not per instance)
 - **Type:** string in the top-level config. Needed by `categories`; fallback is env

@@ -3,10 +3,12 @@ import re
 from dataclasses import dataclass, field
 from typing import List, Optional, Set
 from urllib.parse import urlparse
+from zoneinfo import ZoneInfo
 
 import yaml
 
 from .prompts import Prompt
+from .schedule import ScheduleWindow, parse_schedule, parse_timezone
 from .telegram_utils import _safe_format
 
 # Allow overriding config path via environment variable
@@ -38,6 +40,14 @@ class TargetFile:
 
 
 @dataclass
+class TargetBot:
+    """Configuration for sending matched batches through a Telegram bot."""
+
+    chat_id: int | str
+    token: str
+
+
+@dataclass
 class CategoriesGate:
     """TypeSafe categories gate: classify a message into named categories."""
 
@@ -60,6 +70,7 @@ class Instance:
     target_entity: str | None = None
     target_webhook: TargetWebhook | None = None
     target_file: TargetFile | None = None
+    target_bot: TargetBot | None = None
     false_positive_entity: str | None = None
     true_positive_entity: str | None = None
     folders: List[str] = field(default_factory=list)
@@ -68,6 +79,7 @@ class Instance:
     folder_mute: bool = False
     no_forward_message: bool = False
     ignore_usernames_override: Optional[List[str]] = None
+    ignore_bots: bool | None = None  # None = use the global ignore_bots
     once_per_chat: bool = False
     reset_hour: int = 6
     debounce_ms: int = 0
@@ -82,6 +94,8 @@ class Instance:
     prompts: List[Prompt] = field(default_factory=list)
     folder_add_topic: List[FolderTopic] = field(default_factory=list)
     categories: CategoriesGate | None = None
+    schedule: List[ScheduleWindow] = field(default_factory=list)
+    timezone: ZoneInfo | None = None
 
 
 def parse_proxy(proxy_url: str) -> Optional[tuple]:
@@ -192,8 +206,29 @@ def _parse_categories(cfg: dict | None) -> CategoriesGate | None:
     )
 
 
+def _parse_target_bot(cfg, bot_token: str | None) -> TargetBot | None:
+    """Parse ``target_bot``; the token comes from it or from global ``bot_token``."""
+    if cfg is None:
+        return None
+    chat_id = cfg.get("chat_id") if isinstance(cfg, dict) else None
+    valid_int = isinstance(chat_id, int) and not isinstance(chat_id, bool)
+    if not valid_int and not (isinstance(chat_id, str) and chat_id):
+        raise ValueError(
+            "target_bot.chat_id (int or @username) is required when target_bot "
+            f"is set, got {cfg!r}"
+        )
+    token = cfg.get("token") or bot_token
+    if not isinstance(token, str) or not token:
+        raise ValueError(
+            "target_bot needs a token: set global bot_token or target_bot.token"
+        )
+    return TargetBot(chat_id=chat_id, token=token)
+
+
 async def load_instances(config: dict) -> List[Instance]:
     """Parse instance configurations from config."""
+    bot_token = config.get("bot_token")
+    global_tz = parse_timezone(config.get("timezone"))
     if "instances" not in config:
         config = {
             "instances": [
@@ -279,6 +314,8 @@ async def load_instances(config: dict) -> List[Instance]:
                     f"got {target_file_cfg!r}"
                 )
             target_file = TargetFile(dir=file_dir)
+
+        target_bot = _parse_target_bot(inst_cfg.get("target_bot"), bot_token)
 
         reset_hour = inst_cfg.get("reset_hour", 6)
         if not isinstance(reset_hour, int) or isinstance(reset_hour, bool):
@@ -371,6 +408,10 @@ async def load_instances(config: dict) -> List[Instance]:
                 f"got {cancel_on_owner_reply!r}"
             )
 
+        ignore_bots = inst_cfg.get("ignore_bots")
+        if ignore_bots is not None and not isinstance(ignore_bots, bool):
+            raise ValueError(f"ignore_bots must be a boolean, got {ignore_bots!r}")
+
         instance = Instance(
             name=inst_cfg.get("name", "instance"),
             folders=inst_cfg.get("folders", []),
@@ -383,6 +424,7 @@ async def load_instances(config: dict) -> List[Instance]:
             target_entity=inst_cfg.get("target_entity"),
             target_webhook=target_webhook,
             target_file=target_file,
+            target_bot=target_bot,
             false_positive_entity=inst_cfg.get("false_positive_entity"),
             true_positive_entity=inst_cfg.get("true_positive_entity"),
             folder_mute=inst_cfg.get("folder_mute", False),
@@ -392,6 +434,7 @@ async def load_instances(config: dict) -> List[Instance]:
                 if "ignore_usernames_override" in inst_cfg
                 else None
             ),
+            ignore_bots=ignore_bots,
             once_per_chat=inst_cfg.get("once_per_chat", False),
             reset_hour=reset_hour,
             debounce_ms=debounce_ms,
@@ -406,6 +449,12 @@ async def load_instances(config: dict) -> List[Instance]:
             prompts=parsed_prompts,
             folder_add_topic=folder_topics,
             categories=_parse_categories(inst_cfg.get("categories")),
+            schedule=parse_schedule(inst_cfg.get("schedule")),
+            timezone=(
+                parse_timezone(inst_cfg["timezone"])
+                if "timezone" in inst_cfg
+                else global_tz
+            ),
         )
         parsed_instances.append(instance)
     return parsed_instances

@@ -13,9 +13,16 @@ ignore_user_ids: []
 # TypeSafe API key for the per-instance `categories` gate (fallback: env
 # TYPESAFE_API_KEY).
 typesafe_api_key: ""
+# IANA time zone for instance `schedule` windows (default: process local time,
+# UTC in the Docker image). An instance may set its own `timezone`.
+# timezone: Europe/Belgrade
+# Telegram bot token for instances with `target_bot` (messages sent by a bot
+# notify you, forwards from your own account do not).
+# bot_token: ""
 # Drop messages from senders whose username ends in "bot" (case-insensitive)
 # before any instance runs. Matches by username, NOT by Telegram's bot flag, so
-# e.g. "@abbot" is also dropped. Default: false.
+# e.g. "@abbot" is also dropped. Default: false. An instance may set its own
+# ignore_bots to override this (e.g. false to watch a bot's announcements).
 ignore_bots: false
 instances:
   - name: default
@@ -78,10 +85,21 @@ instances:
     # forwarded at all, header and webhook included. With debounce_ms the
     # check runs after the debounce window. Default: 0 (no check).
     delete_check_ms: 0
+    # Watch this instance only inside these windows (any one matches). Outside
+    # them messages are skipped before any check and not counted. from is
+    # inclusive, to exclusive; to < from runs past midnight. days: mon..sun,
+    # omit for every day. Default: no schedule (always on).
+    # schedule:
+    #   - days: [sat]
+    #     from: "20:55"
+    #     to: "21:30"
+    # timezone: Europe/Belgrade  # overrides the global timezone
     # Optional per-instance override of the global `ignore_usernames`.
     # If set (even to an empty list), this instance ignores the global list
     # and uses this one. If omitted, the global `ignore_usernames` applies.
     # ignore_usernames_override: []
+    # Optional per-instance override of the global `ignore_bots`.
+    # ignore_bots: false
     words: ["my username"]
     negative_words: []
     ignore_words: []
@@ -128,5 +146,12 @@ instances:
     # Optional: write each forwarded batch to its own file in an inbox directory.
     # target_file:
     #   dir: /vault/incoming-telegram
+    # Optional: send each forwarded batch through a Telegram bot, so it notifies
+    # you. One plain-text message: preface, then each text and its link.
+    # chat_id: your user id (press Start in the bot first) or @channel.
+    # token defaults to the global bot_token.
+    # target_bot:
+    #   chat_id: 241225329
+    #   token: ""
     false_positive_entity: ""
     true_positive_entity: ""

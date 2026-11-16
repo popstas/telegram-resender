@@ -85,6 +85,10 @@ Only `name` is truly required; give an instance at least one **source** and one
   - `threshold` — number in `(0, 1]`, default `0.5`. Forwards when the summed
     probability of the `forward` categories is `>=` this.
   - `model` — non-empty string, default `jev-latest`.
+  - `reply_context` — boolean, default `false`. When `true`, a reply also sends
+    the text of the message it answers (first 1000 characters) as `reply_to`, so
+    short replies like "me too, please" get context. Say in `instructions` that
+    `reply_to` is only context. Costs one extra Telegram request per reply.
   - Names must match `[a-z0-9_]+` and be unique across `forward` and `reject`
     (invalid values are rejected at load). The most likely `forward` category
     becomes the `#name` hashtag in the header.

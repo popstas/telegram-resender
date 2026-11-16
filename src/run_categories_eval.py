@@ -23,7 +23,10 @@ def _chat_id(msg: dict) -> int | None:
 
 
 def load_export(paths: list[str]) -> list[dict]:
-    """Read export files into ``{"chat_id", "message_id", "text"}`` rows, skipping empty messages."""
+    """Read export files into ``{"chat_id", "message_id", "text"}`` rows, skipping empty messages.
+
+    A reply also gets ``reply_to``: the parent text when the parent is in the exports.
+    """
     rows: list[dict] = []
     for path in paths:
         with open(path, "r", encoding="utf-8") as f:
@@ -32,9 +35,16 @@ def load_export(paths: list[str]) -> list[dict]:
             text = msg.get("message")
             if not text:
                 continue
-            rows.append(
-                {"chat_id": _chat_id(msg), "message_id": int(msg["id"]), "text": text}
-            )
+            row = {"chat_id": _chat_id(msg), "message_id": int(msg["id"]), "text": text}
+            parent = categories.reply_parent_id(msg.get("reply_to"))
+            if parent is not None:
+                row["reply_to_msg_id"] = parent
+            rows.append(row)
+    texts = {(r["chat_id"], r["message_id"]): r["text"] for r in rows}
+    for row in rows:
+        parent = row.pop("reply_to_msg_id", None)
+        if parent is not None and (row["chat_id"], parent) in texts:
+            row["reply_to"] = texts[(row["chat_id"], parent)]
     return rows
 
 
@@ -182,7 +192,10 @@ async def run_eval(argv: list[str] | None = None, client=None) -> Path:
 
     async def classify(msg: dict, g: dict) -> dict:
         async with sem:
-            match = await categories.match_categories(gate, msg["text"], client=client)
+            reply_to = msg.get("reply_to") if gate.reply_context else None
+            match = await categories.match_categories(
+                gate, msg["text"], reply_to=reply_to, client=client
+            )
         row = {
             "chat_id": msg["chat_id"],
             "message_id": msg["message_id"],

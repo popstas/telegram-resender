@@ -412,6 +412,17 @@ async def test_categories_custom_threshold_and_model():
 
 
 @pytest.mark.asyncio
+async def test_categories_reply_context():
+    base = {"instructions": "q", "forward": {"a": None}}
+    inst = (await config.load_instances(_cat_cfg(base)))[0]
+    assert inst.categories.reply_context is False
+    inst = (await config.load_instances(_cat_cfg({**base, "reply_context": True})))[0]
+    assert inst.categories.reply_context is True
+    with pytest.raises(ValueError, match="reply_context"):
+        await config.load_instances(_cat_cfg({**base, "reply_context": "yes"}))
+
+
+@pytest.mark.asyncio
 async def test_categories_absent_is_none():
     cfg = {"instances": [{"name": "inst", "words": []}]}
     inst = (await config.load_instances(cfg))[0]

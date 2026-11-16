@@ -112,6 +112,7 @@ instances:
     # categories:
     #   model: jev-latest   # default
     #   threshold: 0.5      # in (0, 1], default 0.5
+    #   reply_context: false  # true: send the replied-to message as `reply_to`
     #   instructions: >-
     #     We help clients with web development. Which category does the chat
     #     message belong to?

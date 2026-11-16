@@ -20,7 +20,7 @@ from . import (
     telegram_utils,
     webhook,
 )
-from .categories import CategoryMatch, match_categories
+from .categories import CategoryMatch, match_categories, reply_parent_id
 from .config import (
     Instance,
     get_api_credentials,
@@ -341,6 +341,18 @@ async def _debounce_message(
         )
 
 
+async def get_reply_text(message) -> str | None:
+    """Text of the message ``message`` replies to, or ``None``."""
+    if reply_parent_id(getattr(message, "reply_to", None)) is None:
+        return None
+    try:
+        parent = await message.get_reply_message()
+    except Exception as exc:
+        logger.warning("Failed to load reply parent of %s: %s", message.id, exc)
+        return None
+    return (getattr(parent, "raw_text", None) or None) if parent else None
+
+
 async def process_message(inst: Instance, event: events.NewMessage.Event) -> None:
     """Handle a new message for a specific instance."""
     message = event.message
@@ -379,7 +391,12 @@ async def process_message(inst: Instance, event: events.NewMessage.Event) -> Non
             forward = True
             used_word = w
         elif inst.categories:
-            match = await match_categories(inst.categories, message.raw_text, chat_name)
+            reply_to = (
+                await get_reply_text(message) if inst.categories.reply_context else None
+            )
+            match = await match_categories(
+                inst.categories, message.raw_text, chat_name, reply_to=reply_to
+            )
             if match:
                 stats.add_typesafe_tokens(inst.name, match.input_tokens)
             if match and match.forward:

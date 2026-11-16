@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 
 
+## v0.7.0 - 2026-11-16
+
+### Features
+
+- categories: Send the replied-to message as context
+
 ## v0.6.0 - 2026-11-08
 
 ### Features

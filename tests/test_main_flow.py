@@ -1602,7 +1602,7 @@ def _spy_categories(monkeypatch, result):
     calls = []
 
     async def fake(gate, text, chat_name=None, **kw):
-        calls.append((gate, text, chat_name))
+        calls.append((gate, text, chat_name, kw.get("reply_to")))
         return result
 
     monkeypatch.setattr(app, "match_categories", fake)
@@ -1628,6 +1628,110 @@ async def test_category_gate_forwards_with_hashtag(
     assert sent[0][0][1].startswith("#lead_direct\ncategory: lead_direct 0.80")
     assert cat_calls[0][2] == "n"
     assert app.stats.data["stats"]["forwarded_category"] == 1
+
+
+def _reply_msg(dummy_message_cls, reply_to, parent=None, error=None):
+    msg = dummy_message_cls(SimpleNamespace(channel_id=1), msg_id=3, text="мне тоже")
+    msg.reply_to = reply_to
+    msg.parent_calls = 0
+
+    async def get_reply_message():
+        msg.parent_calls += 1
+        if error:
+            raise error
+        return parent
+
+    msg.get_reply_message = get_reply_message
+    return msg
+
+
+def _reply_gate():
+    return config_module.CategoriesGate(
+        instructions="x", forward={"lead_direct": None}, reply_context=True
+    )
+
+
+@pytest.mark.asyncio
+async def test_category_reply_context_passes_parent_text(
+    monkeypatch, dummy_message_cls, tmp_path
+):
+    _cat_setup(monkeypatch, tmp_path, [])
+    cat_calls = _spy_categories(monkeypatch, _match())
+    _spy_prompt(monkeypatch)
+    msg = _reply_msg(
+        dummy_message_cls,
+        SimpleNamespace(reply_to_msg_id=2),
+        parent=SimpleNamespace(raw_text="ищу PR"),
+    )
+    await app.process_message(
+        _prompt_inst(categories=_reply_gate()), SimpleNamespace(message=msg, chat_id=1)
+    )
+    assert cat_calls[0][3] == "ищу PR"
+
+
+@pytest.mark.asyncio
+async def test_category_reply_context_off_does_not_fetch(
+    monkeypatch, dummy_message_cls, tmp_path
+):
+    _cat_setup(monkeypatch, tmp_path, [])
+    cat_calls = _spy_categories(monkeypatch, _match())
+    _spy_prompt(monkeypatch)
+    msg = _reply_msg(
+        dummy_message_cls,
+        SimpleNamespace(reply_to_msg_id=2),
+        parent=SimpleNamespace(raw_text="ищу PR"),
+    )
+    await app.process_message(_prompt_inst(), SimpleNamespace(message=msg, chat_id=1))
+    assert cat_calls[0][3] is None
+    assert msg.parent_calls == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "reply_to, parent, error",
+    [
+        (None, None, None),
+        (SimpleNamespace(reply_to_msg_id=None), None, None),
+        # message in a forum topic without a real reply: points at the topic root
+        (
+            SimpleNamespace(reply_to_msg_id=7, forum_topic=True, reply_to_top_id=None),
+            SimpleNamespace(raw_text="topic"),
+            None,
+        ),
+        (SimpleNamespace(reply_to_msg_id=2), None, None),
+        (SimpleNamespace(reply_to_msg_id=2), SimpleNamespace(raw_text=""), None),
+        (SimpleNamespace(reply_to_msg_id=2), None, RuntimeError("net")),
+    ],
+)
+async def test_category_reply_context_without_parent_text(
+    monkeypatch, dummy_message_cls, tmp_path, reply_to, parent, error
+):
+    _cat_setup(monkeypatch, tmp_path, [])
+    cat_calls = _spy_categories(monkeypatch, _match())
+    _spy_prompt(monkeypatch)
+    msg = _reply_msg(dummy_message_cls, reply_to, parent=parent, error=error)
+    await app.process_message(
+        _prompt_inst(categories=_reply_gate()), SimpleNamespace(message=msg, chat_id=1)
+    )
+    assert cat_calls[0][3] is None
+
+
+@pytest.mark.asyncio
+async def test_category_reply_context_topic_reply_counts(
+    monkeypatch, dummy_message_cls, tmp_path
+):
+    _cat_setup(monkeypatch, tmp_path, [])
+    cat_calls = _spy_categories(monkeypatch, _match())
+    _spy_prompt(monkeypatch)
+    msg = _reply_msg(
+        dummy_message_cls,
+        SimpleNamespace(reply_to_msg_id=9, forum_topic=True, reply_to_top_id=7),
+        parent=SimpleNamespace(raw_text="ищу PR"),
+    )
+    await app.process_message(
+        _prompt_inst(categories=_reply_gate()), SimpleNamespace(message=msg, chat_id=1)
+    )
+    assert cat_calls[0][3] == "ищу PR"
 
 
 @pytest.mark.asyncio

@@ -89,6 +89,26 @@ async def test_match_state_without_chat():
 
 
 @pytest.mark.asyncio
+async def test_match_state_with_reply_to():
+    client = FakeClient()
+    await match_categories(GATE, "мне тоже", "Chat", reply_to="ищу PR", client=client)
+    state = client.calls[0]["state"]
+    assert state == {"chat": "Chat", "reply_to": "ищу PR", "message": "мне тоже"}
+    assert list(state) == ["chat", "reply_to", "message"]
+
+
+@pytest.mark.asyncio
+async def test_match_reply_to_truncated_and_empty_skipped():
+    from src.categories import REPLY_CONTEXT_MAX_CHARS
+
+    client = FakeClient()
+    await match_categories(GATE, "x", reply_to="a" * 5000, client=client)
+    assert len(client.calls[0]["state"]["reply_to"]) == REPLY_CONTEXT_MAX_CHARS
+    await match_categories(GATE, "x", reply_to="", client=client)
+    assert client.calls[1]["state"] == {"message": "x"}
+
+
+@pytest.mark.asyncio
 async def test_match_empty_text_no_call():
     client = FakeClient()
     assert await match_categories(GATE, "", client=client) is None

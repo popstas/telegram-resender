@@ -18,6 +18,32 @@ _client: "AsyncTypeSafeClient | None" = None
 _sdk_warned = False
 _client_key: tuple | None = None
 
+# Longest parent text sent as ``reply_to`` context.
+REPLY_CONTEXT_MAX_CHARS = 1000
+
+
+def reply_parent_id(header) -> int | None:
+    """Id of the message a reply header points to, or ``None`` if it is not a reply.
+
+    ``header`` is a Telethon ``MessageReplyHeader`` or its JSON export (dict).
+    In forum topics every message points at the topic root; only a reply inside
+    the topic (``reply_to_top_id`` set) counts.
+    """
+    if header is None:
+        return None
+
+    def get(key):
+        if isinstance(header, dict):
+            return header.get(key)
+        return getattr(header, key, None)
+
+    msg_id = get("reply_to_msg_id")
+    if not msg_id:
+        return None
+    if get("forum_topic") and not get("reply_to_top_id"):
+        return None
+    return int(msg_id)
+
 
 @dataclass
 class CategoryMatch:
@@ -67,9 +93,14 @@ async def match_categories(
     text: str,
     chat_name: str | None = None,
     *,
+    reply_to: str | None = None,
     client=None,
 ) -> CategoryMatch | None:
-    """Ask TypeSafe which category ``text`` belongs to; ``None`` on skip or failure."""
+    """Ask TypeSafe which category ``text`` belongs to; ``None`` on skip or failure.
+
+    ``reply_to`` is the text of the message ``text`` answers; it goes into the
+    state as context, the category is still about ``text``.
+    """
     if not text:
         return None
     global _sdk_warned
@@ -91,9 +122,12 @@ async def match_categories(
                 "is not set, skipping"
             )
             return None
-        state: dict = {"message": text}
+        state: dict = {}
         if chat_name is not None:
-            state = {"chat": chat_name, **state}
+            state["chat"] = chat_name
+        if reply_to:
+            state["reply_to"] = reply_to[:REPLY_CONTEXT_MAX_CHARS]
+        state["message"] = text
         question = Choice(
             instructions=gate.instructions,
             criteria={**gate.forward, **gate.reject},

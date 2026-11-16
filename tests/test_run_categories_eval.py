@@ -43,6 +43,91 @@ def test_load_export_skips_empty(tmp_path):
     ]
 
 
+def test_load_export_resolves_reply_parent(tmp_path):
+    peer = {"_": "PeerChannel", "channel_id": 77}
+
+    def reply(msg_id, **kw):
+        return {"_": "MessageReplyHeader", "reply_to_msg_id": msg_id, **kw}
+
+    msgs = [
+        {"id": 1, "peer_id": peer, "message": "ищу PR"},
+        {"id": 2, "peer_id": peer, "message": "мне тоже", "reply_to": reply(1)},
+        {"id": 3, "peer_id": peer, "message": "нет родителя", "reply_to": reply(99)},
+        {
+            "id": 4,
+            "peer_id": peer,
+            "message": "в топике",
+            "reply_to": reply(1, forum_topic=True, reply_to_top_id=None),
+        },
+    ]
+    path = tmp_path / "messages.json"
+    path.write_text(json.dumps(msgs), encoding="utf-8")
+    rows = {r["message_id"]: r for r in load_export([str(path)])}
+    assert rows[2]["reply_to"] == "ищу PR"
+    assert "reply_to" not in rows[1]
+    assert "reply_to" not in rows[3]
+    assert "reply_to" not in rows[4]
+    assert all("reply_to_msg_id" not in r for r in rows.values())
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reply_context", [True, False])
+async def test_run_eval_passes_reply_to_when_enabled(
+    tmp_path, monkeypatch, reply_context
+):
+    monkeypatch.setattr(categories, "config", {})
+    seen = []
+
+    async def fake(gate, text, chat_name=None, *, reply_to=None, client=None):
+        seen.append(reply_to)
+        return None
+
+    monkeypatch.setattr(categories, "match_categories", fake)
+    peer = {"_": "PeerChannel", "channel_id": 5}
+    msgs = [
+        {"id": 1, "peer_id": peer, "message": "ищу PR"},
+        {
+            "id": 2,
+            "peer_id": peer,
+            "message": "мне тоже",
+            "reply_to": {"reply_to_msg_id": 1},
+        },
+    ]
+    export = tmp_path / "m.json"
+    export.write_text(json.dumps(msgs), encoding="utf-8")
+    gold_path = tmp_path / "gold.json"
+    gold_path.write_text(
+        json.dumps([{"chat_id": 5, "message_id": 2, "label": "other"}]),
+        encoding="utf-8",
+    )
+    cat_path = tmp_path / "cat.yml"
+    cat_path.write_text(
+        yaml.safe_dump(
+            {
+                "instructions": "q",
+                "forward": {"a": None},
+                "reject": {"other": None},
+                "reply_context": reply_context,
+            }
+        ),
+        encoding="utf-8",
+    )
+    await run_eval(
+        [
+            "--categories",
+            str(cat_path),
+            "--export",
+            str(export),
+            "--gold",
+            str(gold_path),
+            "--out",
+            str(tmp_path / "out"),
+        ],
+        client=object(),
+    )
+    assert seen == (["ищу PR"] if reply_context else [None])
+
+
 def test_compute_metrics_counts():
     rows = _rows("lead_direct", 1, 2) + _rows("other", 1, 2)
     m = compute_metrics(rows, GATE)

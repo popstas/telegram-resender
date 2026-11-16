@@ -233,6 +233,7 @@ instances:
     categories:
       model: jev-latest      # default
       threshold: 0.5         # in (0, 1], default 0.5
+      reply_context: false   # default; true sends the replied-to message too
       instructions: >-
         We help clients with web development. Which category does the chat
         message belong to?
@@ -260,6 +261,13 @@ instances:
 - `target_webhook` with `format: json` gets a `category` field (name without `#`,
   `null` when the gate did not fire).
 - On a TypeSafe API error the gate is treated as not fired and `prompts` run.
+- `reply_context: true` adds the text of the message being replied to (first
+  1000 characters) to the TypeSafe state as `reply_to`, so short replies like
+  "me too, please" can be classified. The state then is
+  `{chat, reply_to, message}`; the category is still about `message`, so say in
+  `instructions` how to use `reply_to`. In forum topics a message that only
+  belongs to a topic is not a reply. Costs one extra Telegram request per reply.
+  `run_categories_eval` does the same when the parent is in the export.
 
 ## Configurable forwarded message
 

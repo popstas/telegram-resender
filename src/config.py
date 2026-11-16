@@ -56,6 +56,7 @@ class CategoriesGate:
     reject: dict[str, str | None] = field(default_factory=dict)
     threshold: float = 0.5
     model: str = "jev-latest"
+    reply_context: bool = False
 
 
 @dataclass
@@ -197,12 +198,18 @@ def _parse_categories(cfg: dict | None) -> CategoriesGate | None:
     model = cfg.get("model", "jev-latest")
     if not isinstance(model, str) or not model.strip():
         raise ValueError(f"categories.model must be a non-empty string, got {model!r}")
+    reply_context = cfg.get("reply_context", False)
+    if not isinstance(reply_context, bool):
+        raise ValueError(
+            f"categories.reply_context must be a boolean, got {reply_context!r}"
+        )
     return CategoriesGate(
         instructions=instructions,
         forward=forward,
         reject=reject,
         threshold=float(threshold),
         model=model,
+        reply_context=reply_context,
     )
 
 

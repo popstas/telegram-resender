@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -2257,3 +2258,84 @@ async def test_process_message_respects_schedule(
     assert seen == [([window], None)]
     assert len(msg.forwarded) == expected
     assert app.stats.data["stats"].get("total", 0) == expected
+
+
+def _owner_msg(msg_id, text, out, age_hours):
+    return SimpleNamespace(
+        id=msg_id,
+        message=text,
+        raw_text=text,
+        entities=None,
+        out=out,
+        date=datetime.now(timezone.utc) - timedelta(hours=age_hours),
+    )
+
+
+def _owner_client(messages=None, error=None):
+    calls = []
+
+    class DummyClient:
+        async def get_messages(self, chat_id, **kwargs):
+            calls.append((chat_id, kwargs))
+            if error:
+                raise error
+            return messages
+
+    app.client = DummyClient()
+    return calls
+
+
+@pytest.mark.asyncio
+async def test_get_owner_context_keeps_last_outgoing():
+    # Telethon returns newest first
+    calls = _owner_client(
+        [
+            _owner_msg(15, "входящее два", False, 1),
+            _owner_msg(14, "второе от владельца", True, 2),
+            _owner_msg(13, "входящее один", False, 3),
+            _owner_msg(12, "первое от владельца", True, 4),
+            _owner_msg(11, "старое от владельца", True, 25),
+        ]
+    )
+    assert await app.get_owner_context(7, 20, 5) == [
+        "первое от владельца",
+        "второе от владельца",
+    ]
+    assert calls == [(7, {"limit": 20, "max_id": 20})]
+    assert await app.get_owner_context(7, 20, 1) == ["второе от владельца"]
+
+
+@pytest.mark.asyncio
+async def test_get_owner_context_skips_empty_and_none():
+    _owner_client(
+        [
+            None,
+            _owner_msg(3, "", True, 1),
+            _owner_msg(2, None, True, 1),
+            _owner_msg(1, "текст", True, 1),
+        ]
+    )
+    assert await app.get_owner_context(7, 5, 5) == ["текст"]
+
+
+@pytest.mark.asyncio
+async def test_get_owner_context_no_owner_messages_returns_empty():
+    _owner_client([_owner_msg(2, "входящее", False, 1)])
+    assert await app.get_owner_context(7, 5, 3) == []
+    _owner_client([])
+    assert await app.get_owner_context(7, 5, 3) == []
+
+
+@pytest.mark.asyncio
+async def test_get_owner_context_all_older_than_max_age_returns_empty():
+    _owner_client([_owner_msg(2, "давно", True, 30), _owner_msg(1, "ещё", True, 48)])
+    assert await app.get_owner_context(7, 5, 3) == []
+    assert await app.get_owner_context(7, 5, 3, max_age_hours=72) == ["ещё", "давно"]
+
+
+@pytest.mark.asyncio
+async def test_get_owner_context_failure_returns_empty(caplog):
+    _owner_client(error=RuntimeError("boom"))
+    with caplog.at_level(logging.WARNING):
+        assert await app.get_owner_context(7, 5, 3) == []
+    assert "boom" in caplog.text

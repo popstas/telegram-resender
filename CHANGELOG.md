@@ -5,6 +5,10 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+### Features
+
+- categories: After_words, shadow and owner_context gate options
+
 ### Documentation
 
 - Employees DM gate design and plan

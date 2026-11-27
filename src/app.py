@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import List
 
 from telethon import TelegramClient, events, types
@@ -352,6 +352,31 @@ async def get_reply_text(message) -> str | None:
         logger.warning("Failed to load reply parent of %s: %s", message.id, exc)
         return None
     return (quoted_text(parent) or None) if parent else None
+
+
+async def get_owner_context(
+    chat_id: int, before_id: int, limit: int, max_age_hours: int = 24
+) -> list[str]:
+    """Last ``limit`` fresh outgoing texts of the chat before ``before_id``.
+
+    Oldest first; ``[]`` when there are none or the request fails.
+    """
+    if limit <= 0:
+        return []
+    try:
+        messages = await client.get_messages(chat_id, limit=20, max_id=before_id)
+        threshold = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
+        texts = []
+        for m in messages:
+            if m is None or not m.out or m.date < threshold:
+                continue
+            text = quoted_text(m)
+            if text:
+                texts.append(text)
+    except Exception as exc:
+        logger.warning("Failed to load owner context of chat %s: %s", chat_id, exc)
+        return []
+    return list(reversed(texts[:limit]))
 
 
 async def process_message(inst: Instance, event: events.NewMessage.Event) -> None:

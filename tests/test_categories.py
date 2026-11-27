@@ -109,6 +109,46 @@ async def test_match_reply_to_truncated_and_empty_skipped():
 
 
 @pytest.mark.asyncio
+async def test_match_owner_previous_in_state():
+    client = FakeClient()
+    await match_categories(
+        GATE,
+        "текст",
+        "Chat",
+        reply_to="ищу PR",
+        owner_previous=["сделал выгрузку"],
+        client=client,
+    )
+    state = client.calls[0]["state"]
+    assert state["owner_previous"] == ["сделал выгрузку"]
+    assert list(state) == ["chat", "reply_to", "owner_previous", "message"]
+    await match_categories(GATE, "текст", client=client)
+    assert "owner_previous" not in client.calls[1]["state"]
+
+
+@pytest.mark.asyncio
+async def test_match_owner_previous_empty_or_none_no_key():
+    client = FakeClient()
+    await match_categories(GATE, "текст", owner_previous=[], client=client)
+    await match_categories(GATE, "текст", owner_previous=None, client=client)
+    assert client.calls[0]["state"] == {"message": "текст"}
+    assert client.calls[1]["state"] == {"message": "текст"}
+
+
+@pytest.mark.asyncio
+async def test_match_owner_previous_truncated():
+    from src.categories import REPLY_CONTEXT_MAX_CHARS
+
+    client = FakeClient()
+    await match_categories(
+        GATE, "x", owner_previous=["a" * 5000, "короткое"], client=client
+    )
+    prev = client.calls[0]["state"]["owner_previous"]
+    assert len(prev[0]) == REPLY_CONTEXT_MAX_CHARS
+    assert prev[1] == "короткое"
+
+
+@pytest.mark.asyncio
 async def test_match_empty_text_no_call():
     client = FakeClient()
     assert await match_categories(GATE, "", client=client) is None

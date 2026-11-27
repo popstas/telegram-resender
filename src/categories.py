@@ -94,12 +94,14 @@ async def match_categories(
     chat_name: str | None = None,
     *,
     reply_to: str | None = None,
+    owner_previous: list[str] | None = None,
     client=None,
 ) -> CategoryMatch | None:
     """Ask TypeSafe which category ``text`` belongs to; ``None`` on skip or failure.
 
     ``reply_to`` is the text of the message ``text`` answers; it goes into the
-    state as context, the category is still about ``text``.
+    state as context, the category is still about ``text``. ``owner_previous`` are
+    the account owner's recent messages in the chat (oldest first), also context.
     """
     if not text:
         return None
@@ -127,6 +129,10 @@ async def match_categories(
             state["chat"] = chat_name
         if reply_to:
             state["reply_to"] = reply_to[:REPLY_CONTEXT_MAX_CHARS]
+        if owner_previous:
+            state["owner_previous"] = [
+                t[:REPLY_CONTEXT_MAX_CHARS] for t in owner_previous
+            ]
         state["message"] = text
         question = Choice(
             instructions=gate.instructions,

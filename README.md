@@ -277,6 +277,13 @@ instances:
   alternatives ("or"). `shadow: true` only logs the verdict and forwards the
   batch anyway, for tuning. `owner_context: N` adds the last N messages of the
   chat owner (not older than 24 hours) to the gate context; `0` disables it.
+  With `after_words` the gate no longer fires on single messages. It sees the
+  texts of the whole batch joined by newlines. It is skipped (the batch is
+  forwarded) when the batch has an attachment without text (photo, sticker,
+  ...) or no text at all, and fails open on a TypeSafe error. A rejection
+  blocks every destination (chat, webhook, `target_file`, `target_bot`) and is
+  logged at info with the category and probabilities; in `shadow` mode the
+  same line says `shadow` and the batch is sent.
 - Quotes are marked. Telegram sends a quote block (plain or expandable) as a
   `MessageEntityBlockquote` entity, so the plain text mixes the author's answer
   with the quoted comment. The gate gets the text with every quote line

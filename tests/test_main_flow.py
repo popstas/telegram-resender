@@ -2339,3 +2339,397 @@ async def test_get_owner_context_failure_returns_empty(caplog):
     with caplog.at_level(logging.WARNING):
         assert await app.get_owner_context(7, 5, 3) == []
     assert "boom" in caplog.text
+
+
+# --- after_words: the gate vetoes word-triggered batches ------------------------
+
+
+def _after_inst(*, categories_kw=None, **kw):
+    gate = config_module.CategoriesGate(
+        instructions="x",
+        forward={"lead_direct": None},
+        after_words=True,
+        **(categories_kw or {}),
+    )
+    kw.setdefault("debounce_ms", 1000)
+    return app.Instance(
+        name="a", words=["привет"], target_chat=1, categories=gate, **kw
+    )
+
+
+def _spy_gate(monkeypatch, result):
+    """Record (text, kwargs) of every match_categories call."""
+    calls = []
+
+    async def fake(gate, text, chat_name=None, **kw):
+        calls.append((text, kw))
+        return result
+
+    monkeypatch.setattr(app, "match_categories", fake)
+    return calls
+
+
+def _spy_forward(monkeypatch):
+    calls = []
+
+    async def fake_forward(inst, messages, **kwargs):
+        calls.append((messages, kwargs))
+        return True
+
+    monkeypatch.setattr(app, "_forward_messages", fake_forward)
+    return calls
+
+
+def _after_msg(dummy_message_cls, msg_id, text, *, media=None):
+    msg = dummy_message_cls(SimpleNamespace(channel_id=1), msg_id=msg_id, text=text)
+    msg.chat_id = 10
+    if media:
+        msg.media = object()
+        setattr(msg, media, True)
+    return msg
+
+
+async def _feed(inst, messages):
+    for m in messages:
+        await app.process_message(inst, SimpleNamespace(message=m, chat_id=10))
+
+
+async def _flush(monkeypatch, inst, messages):
+    """Feed ``messages`` through a debounce window and fire the flush."""
+    from src.debounce import DebounceManager
+
+    scheduler = _FakeScheduler()
+    monkeypatch.setattr(
+        app, "debounce_manager", DebounceManager(clock=lambda: 0.0, scheduler=scheduler)
+    )
+    await _feed(inst, messages)
+    scheduler.fire_last()
+    await asyncio.sleep(0.01)
+
+
+@pytest.mark.asyncio
+async def test_after_words_reject_blocks_flush(
+    monkeypatch, dummy_message_cls, tmp_path
+):
+    sent = []
+    _cat_setup(monkeypatch, tmp_path, sent)
+    cat_calls = _spy_gate(monkeypatch, _match(forward=False, input_tokens=50))
+    file_calls = []
+
+    async def fake_write_batch(target, messages, trigger):
+        file_calls.append(messages)
+
+    monkeypatch.setattr(app.target_file, "write_batch", fake_write_batch)
+    hook_calls = []
+
+    async def fake_webhook(*a, **k):
+        hook_calls.append(a)
+
+    monkeypatch.setattr(app.webhook, "send_webhook", fake_webhook)
+    inst = _after_inst(
+        target_file=config_module.TargetFile(dir=str(tmp_path)),
+        target_webhook=config_module.TargetWebhook(
+            url="http://localhost:8002/hook", format="json"
+        ),
+    )
+    m1 = _after_msg(dummy_message_cls, 1, "привет")
+    m2 = _after_msg(dummy_message_cls, 2, "а как у вас дела")
+    await _flush(monkeypatch, inst, [m1, m2])
+
+    assert len(cat_calls) == 1
+    assert sent == []
+    assert m1.forwarded == [] and m2.forwarded == []
+    assert file_calls == [] and hook_calls == []
+    data = app.stats.data["stats"]
+    assert data["forwarded_total"] == 0
+    assert data["forwarded_category"] == 0
+    assert data["total"] == 2
+    assert app.stats.data["stats"]["typesafe_input_tokens"] == 50
+
+
+@pytest.mark.asyncio
+async def test_after_words_reject_is_logged(
+    monkeypatch, dummy_message_cls, tmp_path, caplog
+):
+    _cat_setup(monkeypatch, tmp_path, [])
+    _spy_gate(monkeypatch, _match(forward=False))
+    _spy_forward(monkeypatch)
+    with caplog.at_level(logging.INFO):
+        await _flush(
+            monkeypatch, _after_inst(), [_after_msg(dummy_message_cls, 7, "привет")]
+        )
+    text = caplog.text
+    assert "gate rejected batch" in text
+    assert "[7]" in text and "lead_direct" in text
+    assert "p_forward=0.10" in text and "lead_direct': 0.8" in text
+    assert "shadow" not in text
+
+
+@pytest.mark.asyncio
+async def test_after_words_forward_sends_batch(
+    monkeypatch, dummy_message_cls, tmp_path
+):
+    _cat_setup(monkeypatch, tmp_path, [])
+    cat_calls = _spy_gate(monkeypatch, _match())
+    fwd = _spy_forward(monkeypatch)
+    m1 = _after_msg(dummy_message_cls, 1, "контекст до")
+    m2 = _after_msg(dummy_message_cls, 2, "привет")
+    m3 = _after_msg(dummy_message_cls, 3, "сколько стоит")
+    await _flush(monkeypatch, _after_inst(), [m1, m2, m3])
+
+    assert [c[0] for c in cat_calls] == ["контекст до\nпривет\nсколько стоит"]
+    assert len(fwd) == 1
+    messages, kwargs = fwd[0]
+    assert messages == [m1, m2, m3]
+    # The gate's match must not change the header: words only (R6).
+    assert kwargs["used_word"] == "привет"
+    assert kwargs["used_category"] is None
+    assert app.stats.data["stats"]["forwarded_total"] == 1
+    assert app.stats.data["stats"]["forwarded_category"] == 0
+
+
+@pytest.mark.asyncio
+async def test_after_words_forward_counts_tokens(
+    monkeypatch, dummy_message_cls, tmp_path
+):
+    _cat_setup(monkeypatch, tmp_path, [])
+    _spy_gate(monkeypatch, _match(input_tokens=77))
+    _spy_forward(monkeypatch)
+    await _flush(
+        monkeypatch, _after_inst(), [_after_msg(dummy_message_cls, 1, "привет")]
+    )
+    assert app.stats.data["stats"]["typesafe_input_tokens"] == 77
+
+
+@pytest.mark.asyncio
+async def test_after_words_gate_failure_fails_open(
+    monkeypatch, dummy_message_cls, tmp_path
+):
+    _cat_setup(monkeypatch, tmp_path, [])
+    cat_calls = _spy_gate(monkeypatch, None)
+    fwd = _spy_forward(monkeypatch)
+    await _flush(
+        monkeypatch, _after_inst(), [_after_msg(dummy_message_cls, 1, "привет")]
+    )
+    assert len(cat_calls) == 1
+    assert len(fwd) == 1
+
+
+@pytest.mark.asyncio
+async def test_after_words_attachment_without_text_bypasses_gate(
+    monkeypatch, dummy_message_cls, tmp_path, caplog
+):
+    _cat_setup(monkeypatch, tmp_path, [])
+    cat_calls = _spy_gate(monkeypatch, _match(forward=False))
+    fwd = _spy_forward(monkeypatch)
+    photo = _after_msg(dummy_message_cls, 1, None, media="photo")
+    word = _after_msg(dummy_message_cls, 2, "привет")
+    with caplog.at_level(logging.INFO):
+        await _flush(monkeypatch, _after_inst(), [photo, word])
+    assert cat_calls == []
+    assert len(fwd) == 1 and fwd[0][0] == [photo, word]
+    assert "gate bypassed: attachment" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_after_words_attachment_with_caption_is_gated(
+    monkeypatch, dummy_message_cls, tmp_path
+):
+    _cat_setup(monkeypatch, tmp_path, [])
+    cat_calls = _spy_gate(monkeypatch, _match(forward=False))
+    fwd = _spy_forward(monkeypatch)
+    photo = _after_msg(dummy_message_cls, 1, "привет, вот фото", media="photo")
+    await _flush(monkeypatch, _after_inst(), [photo])
+    assert len(cat_calls) == 1
+    assert fwd == []
+
+
+@pytest.mark.asyncio
+async def test_after_words_sticker_bypasses_gate(
+    monkeypatch, dummy_message_cls, tmp_path
+):
+    _cat_setup(monkeypatch, tmp_path, [])
+    cat_calls = _spy_gate(monkeypatch, _match(forward=False))
+    fwd = _spy_forward(monkeypatch)
+    sticker = _after_msg(dummy_message_cls, 1, "", media="sticker")
+    word = _after_msg(dummy_message_cls, 2, "привет")
+    await _flush(monkeypatch, _after_inst(), [sticker, word])
+    assert cat_calls == []
+    assert len(fwd) == 1
+
+
+@pytest.mark.asyncio
+async def test_after_words_shadow_logs_and_sends(
+    monkeypatch, dummy_message_cls, tmp_path, caplog
+):
+    _cat_setup(monkeypatch, tmp_path, [])
+    _spy_gate(monkeypatch, _match(forward=False))
+    fwd = _spy_forward(monkeypatch)
+    inst = _after_inst(categories_kw={"shadow": True})
+    with caplog.at_level(logging.INFO):
+        await _flush(monkeypatch, inst, [_after_msg(dummy_message_cls, 5, "привет")])
+    assert len(fwd) == 1
+    assert "shadow" in caplog.text
+    assert "lead_direct" in caplog.text and "p_forward=0.10" in caplog.text
+    assert app.stats.data["stats"]["forwarded_total"] == 1
+
+
+@pytest.mark.asyncio
+async def test_after_words_owner_context_passed(
+    monkeypatch, dummy_message_cls, tmp_path
+):
+    _cat_setup(monkeypatch, tmp_path, [])
+    cat_calls = _spy_gate(monkeypatch, _match())
+    _spy_forward(monkeypatch)
+    ctx_calls = []
+
+    async def fake_owner_context(chat_id, before_id, limit, max_age_hours=24):
+        ctx_calls.append((chat_id, before_id, limit))
+        return ["ответ владельца раз", "ответ владельца два"]
+
+    monkeypatch.setattr(app, "get_owner_context", fake_owner_context)
+    inst = _after_inst(categories_kw={"owner_context": 3})
+    m1 = _after_msg(dummy_message_cls, 4, "контекст до")
+    m2 = _after_msg(dummy_message_cls, 5, "привет")
+    await _flush(monkeypatch, inst, [m1, m2])
+    assert ctx_calls == [(10, 4, 3)]
+    assert cat_calls[0][1]["owner_previous"] == [
+        "ответ владельца раз",
+        "ответ владельца два",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_after_words_owner_context_failure_still_gates(
+    monkeypatch, dummy_message_cls, tmp_path
+):
+    """R2: a failing Telegram history request must not stop the gate or the send."""
+
+    class FailingClient:
+        async def get_messages(self, *a, **k):
+            raise RuntimeError("boom")
+
+        async def send_message(self, *a, **k):
+            pass
+
+    _cat_setup(monkeypatch, tmp_path, [])
+    app.client = FailingClient()
+    cat_calls = _spy_gate(monkeypatch, _match())
+    fwd = _spy_forward(monkeypatch)
+    inst = _after_inst(categories_kw={"owner_context": 3})
+    await _flush(monkeypatch, inst, [_after_msg(dummy_message_cls, 5, "привет")])
+    assert len(cat_calls) == 1
+    assert not cat_calls[0][1].get("owner_previous")
+    assert len(fwd) == 1
+
+
+@pytest.mark.asyncio
+async def test_after_words_no_owner_context_by_default(
+    monkeypatch, dummy_message_cls, tmp_path
+):
+    _cat_setup(monkeypatch, tmp_path, [])
+    cat_calls = _spy_gate(monkeypatch, _match())
+    _spy_forward(monkeypatch)
+
+    async def fail(*a, **k):
+        raise AssertionError("get_owner_context must not be called")
+
+    monkeypatch.setattr(app, "get_owner_context", fail)
+    await _flush(
+        monkeypatch, _after_inst(), [_after_msg(dummy_message_cls, 5, "привет")]
+    )
+    assert len(cat_calls) == 1
+    assert not cat_calls[0][1].get("owner_previous")
+
+
+@pytest.mark.asyncio
+async def test_after_words_cancelled_batch_not_gated(
+    monkeypatch, dummy_message_cls, tmp_path
+):
+    from src.debounce import DebounceManager
+
+    _cat_setup(monkeypatch, tmp_path, [])
+    cat_calls = _spy_gate(monkeypatch, _match())
+    fwd = _spy_forward(monkeypatch)
+    scheduler = _FakeScheduler()
+    mgr = DebounceManager(clock=lambda: 0.0, scheduler=scheduler)
+    monkeypatch.setattr(app, "debounce_manager", mgr)
+    await _feed(_after_inst(), [_after_msg(dummy_message_cls, 1, "привет")])
+    # The owner replied: the handler cancels the batch before the flush.
+    mgr.cancel(("a", 10))
+    scheduler.fire_last()
+    await asyncio.sleep(0.01)
+    assert cat_calls == []
+    assert fwd == []
+
+
+@pytest.mark.asyncio
+async def test_without_after_words_word_skips_gate(
+    monkeypatch, dummy_message_cls, tmp_path
+):
+    """Regression: without after_words words and the gate stay alternatives."""
+    _cat_setup(monkeypatch, tmp_path, [])
+    cat_calls = _spy_gate(monkeypatch, _match(forward=False))
+    fwd = _spy_forward(monkeypatch)
+    inst = _after_inst()
+    inst.categories.after_words = False
+    await _flush(monkeypatch, inst, [_after_msg(dummy_message_cls, 1, "привет")])
+    assert cat_calls == []
+    assert len(fwd) == 1
+
+
+@pytest.mark.asyncio
+async def test_after_words_message_without_word_does_not_call_gate(
+    monkeypatch, dummy_message_cls, tmp_path
+):
+    """R1: with after_words the gate is a veto only, never an "or" trigger."""
+    _cat_setup(monkeypatch, tmp_path, [])
+    cat_calls = _spy_gate(monkeypatch, _match())
+    fwd = _spy_forward(monkeypatch)
+    await _flush_nothing(
+        monkeypatch, _after_inst(), [_after_msg(dummy_message_cls, 1, "добрый день")]
+    )
+    assert cat_calls == []
+    assert fwd == []
+
+
+async def _flush_nothing(monkeypatch, inst, messages):
+    from src.debounce import DebounceManager
+
+    scheduler = _FakeScheduler()
+    monkeypatch.setattr(
+        app, "debounce_manager", DebounceManager(clock=lambda: 0.0, scheduler=scheduler)
+    )
+    await _feed(inst, messages)
+    await asyncio.sleep(0.01)
+
+
+@pytest.mark.asyncio
+async def test_after_words_reject_without_debounce_not_forwarded(
+    monkeypatch, dummy_message_cls, tmp_path
+):
+    sent = []
+    _cat_setup(monkeypatch, tmp_path, sent)
+    cat_calls = _spy_gate(monkeypatch, _match(forward=False))
+    inst = _after_inst(debounce_ms=0)
+    msg = _after_msg(dummy_message_cls, 1, "привет")
+    await _feed(inst, [msg])
+    assert [c[0] for c in cat_calls] == ["привет"]
+    assert sent == [] and msg.forwarded == []
+    data = app.stats.data["stats"]
+    assert data["forwarded_total"] == 0
+    assert data["total"] == 1
+
+
+@pytest.mark.asyncio
+async def test_after_words_forward_without_debounce_sends(
+    monkeypatch, dummy_message_cls, tmp_path
+):
+    _cat_setup(monkeypatch, tmp_path, [])
+    cat_calls = _spy_gate(monkeypatch, _match())
+    inst = _after_inst(debounce_ms=0)
+    msg = _after_msg(dummy_message_cls, 1, "привет")
+    await _feed(inst, [msg])
+    assert len(cat_calls) == 1
+    assert msg.forwarded == [1]
+    assert app.stats.data["stats"]["forwarded_total"] == 1

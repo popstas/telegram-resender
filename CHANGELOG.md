@@ -7,6 +7,7 @@ All notable changes to this project are documented here.
 
 ### Features
 
+- categories: Owner messages as gate context
 - categories: After_words, shadow and owner_context gate options
 
 ### Documentation

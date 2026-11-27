@@ -89,6 +89,17 @@ Only `name` is truly required; give an instance at least one **source** and one
     the text of the message it answers (first 1000 characters) as `reply_to`, so
     short replies like "me too, please" get context. Say in `instructions` that
     `reply_to` is only context. Costs one extra Telegram request per reply.
+  - `after_words` — boolean, default `false`. When `true` the gate is a veto, not
+    a trigger: it runs after `words` on the word-triggered (debounced) batch and a
+    batch classified into a `reject` category (or below `threshold`) is not
+    forwarded to any destination. Without it `words` and the gate are "or".
+    Fails open on an API error or a batch with an attachment without text.
+    `reply_context` is not used in this mode.
+  - `shadow` — boolean, default `false`. With `after_words`: only log the verdict,
+    forward anyway (for tuning).
+  - `owner_context` — integer `>= 0`, default `0`. With `after_words`: send the
+    last N messages of the chat owner (not older than 24 hours) as
+    `owner_previous`; say in `instructions` that they are only context.
   - Names must match `[a-z0-9_]+` and be unique across `forward` and `reject`
     (invalid values are rejected at load). The most likely `forward` category
     becomes the `#name` hashtag in the header.

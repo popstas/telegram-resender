@@ -2,6 +2,7 @@
 
 import logging
 import os
+import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -20,6 +21,51 @@ _client_key: tuple | None = None
 
 # Longest parent text sent as ``reply_to`` context.
 REPLY_CONTEXT_MAX_CHARS = 1000
+
+SECRET = "<секрет>"
+_URL_CREDS = re.compile(r"(://)[^/\s:@]+:[^/\s@]+@")
+_KEYWORD_VALUE = re.compile(
+    r"(?i)\b(логин|login|пароль|password|токен|token)\b"
+    r"(\s*[:=]\s*|\s+[-—–]\s+|\s+)(\S+)"
+)
+_EMAIL_LINE = re.compile(r"^[\w.+-]+@[\w-]+(\.[\w-]+)+$")
+
+
+def _password_like(line: str) -> bool:
+    """A whole line that is one token of 8-64 chars with a digit and 3+ char classes."""
+    t = line.strip().strip("`")
+    if not 8 <= len(t) <= 64 or re.search(r"[\s/@]", t) or t.startswith("http"):
+        return False
+    classes = (r"[a-zа-я]", r"[A-ZА-Я]", r"\d", r"[^\w]")
+    return sum(bool(re.search(p, t)) for p in classes) >= 3 and bool(
+        re.search(r"\d", t)
+    )
+
+
+def _mask_keyword(m: re.Match) -> str:
+    sep, value = m.group(2), m.group(3)
+    # "пароль не подходит": after a bare space only a value with a digit or a symbol counts.
+    if not sep.strip() and not re.search(r"[\d\W_]", value):
+        return m.group(0)
+    return m.group(1) + sep + SECRET
+
+
+def mask_secrets(text: str) -> str:
+    """Replace credentials with ``<секрет>`` before the text leaves for TypeSafe.
+
+    Masks ``user:pass@`` in URLs, the value after login/password/token keywords
+    (``ключ`` is not a keyword: VPN keys stay), and a password-like line together
+    with the e-mail login line right above it.
+    """
+    text = _URL_CREDS.sub(lambda m: m.group(1) + SECRET + "@", text)
+    text = _KEYWORD_VALUE.sub(_mask_keyword, text)
+    lines = text.split("\n")
+    for i, line in enumerate(lines):
+        if line != SECRET and _password_like(line):
+            lines[i] = SECRET
+            if i > 0 and _EMAIL_LINE.match(lines[i - 1].strip()):
+                lines[i - 1] = SECRET
+    return "\n".join(lines)
 
 
 def reply_parent_id(header) -> int | None:
@@ -88,18 +134,27 @@ def evaluate_probabilities(
     return category, fwd[category], p_forward, p_forward >= gate.threshold
 
 
+def top_category(probabilities: dict[str, float]) -> str | None:
+    """Name of the most likely category over forward AND reject, ``None`` if empty."""
+    if not probabilities:
+        return None
+    return max(probabilities, key=lambda n: probabilities[n])
+
+
 async def match_categories(
     gate: "CategoriesGate",
     text: str,
     chat_name: str | None = None,
     *,
     reply_to: str | None = None,
+    owner_previous: list[str] | None = None,
     client=None,
 ) -> CategoryMatch | None:
     """Ask TypeSafe which category ``text`` belongs to; ``None`` on skip or failure.
 
     ``reply_to`` is the text of the message ``text`` answers; it goes into the
-    state as context, the category is still about ``text``.
+    state as context, the category is still about ``text``. ``owner_previous`` are
+    the account owner's recent messages in the chat (oldest first), also context.
     """
     if not text:
         return None
@@ -126,8 +181,12 @@ async def match_categories(
         if chat_name is not None:
             state["chat"] = chat_name
         if reply_to:
-            state["reply_to"] = reply_to[:REPLY_CONTEXT_MAX_CHARS]
-        state["message"] = text
+            state["reply_to"] = mask_secrets(reply_to)[:REPLY_CONTEXT_MAX_CHARS]
+        if owner_previous:
+            state["owner_previous"] = [
+                mask_secrets(t)[:REPLY_CONTEXT_MAX_CHARS] for t in owner_previous
+            ]
+        state["message"] = mask_secrets(text)
         question = Choice(
             instructions=gate.instructions,
             criteria={**gate.forward, **gate.reject},

@@ -57,6 +57,9 @@ class CategoriesGate:
     threshold: float = 0.5
     model: str = "jev-latest"
     reply_context: bool = False
+    after_words: bool = False
+    shadow: bool = False
+    owner_context: int = 0
 
 
 @dataclass
@@ -203,6 +206,24 @@ def _parse_categories(cfg: dict | None) -> CategoriesGate | None:
         raise ValueError(
             f"categories.reply_context must be a boolean, got {reply_context!r}"
         )
+    after_words = cfg.get("after_words", False)
+    if not isinstance(after_words, bool):
+        raise ValueError(
+            f"categories.after_words must be a boolean, got {after_words!r}"
+        )
+    shadow = cfg.get("shadow", False)
+    if not isinstance(shadow, bool):
+        raise ValueError(f"categories.shadow must be a boolean, got {shadow!r}")
+    owner_context = cfg.get("owner_context", 0)
+    if (
+        not isinstance(owner_context, int)
+        or isinstance(owner_context, bool)
+        or owner_context < 0
+    ):
+        raise ValueError(
+            f"categories.owner_context must be a non-negative integer, "
+            f"got {owner_context!r}"
+        )
     return CategoriesGate(
         instructions=instructions,
         forward=forward,
@@ -210,6 +231,9 @@ def _parse_categories(cfg: dict | None) -> CategoriesGate | None:
         threshold=float(threshold),
         model=model,
         reply_context=reply_context,
+        after_words=after_words,
+        shadow=shadow,
+        owner_context=owner_context,
     )
 
 

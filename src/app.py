@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import List
 
 from telethon import TelegramClient, events, types
@@ -20,7 +20,7 @@ from . import (
     telegram_utils,
     webhook,
 )
-from .categories import CategoryMatch, match_categories, reply_parent_id
+from .categories import CategoryMatch, match_categories, reply_parent_id, top_category
 from .config import (
     Instance,
     get_api_credentials,
@@ -301,6 +301,10 @@ async def _debounce_message(
     }
 
     async def flush_cb(batch: list, ctx: dict) -> None:
+        if ctx["used_word"] is not None and not await _word_batch_allowed(
+            inst, batch, ctx["used_prompt"]
+        ):
+            return
         forwarded = await _forward_messages(
             inst,
             batch,
@@ -354,6 +358,128 @@ async def get_reply_text(message) -> str | None:
     return (quoted_text(parent) or None) if parent else None
 
 
+async def get_owner_context(
+    chat_id: int, before_id: int, limit: int, max_age_hours: int = 24
+) -> list[str]:
+    """Last ``limit`` fresh outgoing texts of the chat before ``before_id``.
+
+    Oldest first; ``[]`` when there are none or the request fails.
+    """
+    if limit <= 0:
+        return []
+    try:
+        messages = await client.get_messages(chat_id, limit=20, max_id=before_id)
+        threshold = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
+        texts = []
+        for m in messages:
+            if m is None or not m.out or m.date < threshold:
+                continue
+            text = quoted_text(m)
+            if text:
+                texts.append(text)
+    except Exception as exc:
+        logger.warning("Failed to load owner context of chat %s: %s", chat_id, exc)
+        return []
+    return list(reversed(texts[:limit]))
+
+
+async def gate_batch(inst: Instance, batch: list) -> tuple[bool, CategoryMatch | None]:
+    """Run the ``after_words`` gate over a word-triggered batch.
+
+    Returns ``(send, match)``. The gate only vetoes: it fails open (``send`` is
+    True) when ``after_words`` is off, the batch carries an attachment without
+    text, there is no text, or the classification failed. In ``shadow`` mode a
+    rejection is only logged.
+    """
+    gate = inst.categories
+    if not gate or not gate.after_words:
+        return True, None
+    chat_id = getattr(batch[0], "chat_id", None)
+    ids = [m.id for m in batch]
+    texts = []
+    for m in batch:
+        text = quoted_text(m) or ""
+        if text.strip():
+            texts.append(text)
+        elif target_file.media_type(m) is not None:
+            chat_name = await get_chat_name(chat_id, safe=True)
+            logger.info(
+                "gate bypassed: attachment without text in batch %s %s",
+                chat_name,
+                ids,
+            )
+            return True, None
+    if not texts:
+        return True, None
+    chat_name = await get_chat_name(chat_id, safe=True)
+    owner_previous = None
+    if gate.owner_context > 0 and chat_id is not None:
+        owner_previous = await get_owner_context(
+            chat_id, batch[0].id, gate.owner_context
+        )
+    match = await match_categories(
+        gate,
+        "\n".join(texts),
+        chat_name,
+        owner_previous=owner_previous,
+    )
+    if match is None:
+        return True, None
+    stats.add_typesafe_tokens(inst.name, match.input_tokens)
+    winner = top_category(match.probabilities)
+    if match.forward:
+        logger.info(
+            "gate forwarded batch %s %s %s: %s p_forward=%.2f",
+            inst.name,
+            chat_name,
+            ids,
+            winner,
+            match.p_forward,
+        )
+        return True, match
+    logger.info(
+        "gate %s batch %s %s %s: %s p_forward=%.2f probabilities=%s",
+        "shadow: would reject" if gate.shadow else "rejected",
+        inst.name,
+        chat_name,
+        ids,
+        winner,
+        match.p_forward,
+        match.probabilities,
+    )
+    return gate.shadow, match
+
+
+async def _word_batch_allowed(
+    inst: Instance, batch: list, used_prompt: Prompt | None
+) -> bool:
+    """Run the ``after_words`` gate on a word-triggered batch.
+
+    Fail-open: any error inside the gate step logs a warning and lets the batch
+    through. On a veto the not-forwarded stats are counted and ``False`` returned.
+    """
+    try:
+        send, _ = await gate_batch(inst, batch)
+    except Exception as exc:  # pylint: disable=broad-except
+        logger.warning(
+            "gate failed for batch %s of %s, sending anyway: %s",
+            [m.id for m in batch],
+            inst.name,
+            exc,
+            exc_info=True,
+        )
+        return True
+    if not send:
+        stats.increment(
+            inst.name,
+            forwarded=False,
+            used_word=True,
+            used_prompt=used_prompt is not None,
+            used_category=True,
+        )
+    return send
+
+
 async def process_message(inst: Instance, event: events.NewMessage.Event) -> None:
     """Handle a new message for a specific instance."""
     message = event.message
@@ -391,7 +517,7 @@ async def process_message(inst: Instance, event: events.NewMessage.Event) -> Non
         if w:
             forward = True
             used_word = w
-        elif inst.categories:
+        elif inst.categories and not inst.categories.after_words:
             reply_to = (
                 await get_reply_text(message) if inst.categories.reply_context else None
             )
@@ -450,6 +576,12 @@ async def process_message(inst: Instance, event: events.NewMessage.Event) -> Non
         )
         return
 
+    if (
+        forward
+        and used_word is not None
+        and not await _word_batch_allowed(inst, [message], used_prompt)
+    ):
+        return
     if forward:
         forward = await _forward_messages(
             inst,

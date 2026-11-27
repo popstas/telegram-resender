@@ -109,6 +109,46 @@ async def test_match_reply_to_truncated_and_empty_skipped():
 
 
 @pytest.mark.asyncio
+async def test_match_owner_previous_in_state():
+    client = FakeClient()
+    await match_categories(
+        GATE,
+        "текст",
+        "Chat",
+        reply_to="ищу PR",
+        owner_previous=["сделал выгрузку"],
+        client=client,
+    )
+    state = client.calls[0]["state"]
+    assert state["owner_previous"] == ["сделал выгрузку"]
+    assert list(state) == ["chat", "reply_to", "owner_previous", "message"]
+    await match_categories(GATE, "текст", client=client)
+    assert "owner_previous" not in client.calls[1]["state"]
+
+
+@pytest.mark.asyncio
+async def test_match_owner_previous_empty_or_none_no_key():
+    client = FakeClient()
+    await match_categories(GATE, "текст", owner_previous=[], client=client)
+    await match_categories(GATE, "текст", owner_previous=None, client=client)
+    assert client.calls[0]["state"] == {"message": "текст"}
+    assert client.calls[1]["state"] == {"message": "текст"}
+
+
+@pytest.mark.asyncio
+async def test_match_owner_previous_truncated():
+    from src.categories import REPLY_CONTEXT_MAX_CHARS
+
+    client = FakeClient()
+    await match_categories(
+        GATE, "x", owner_previous=["a" * 5000, "короткое"], client=client
+    )
+    prev = client.calls[0]["state"]["owner_previous"]
+    assert len(prev[0]) == REPLY_CONTEXT_MAX_CHARS
+    assert prev[1] == "короткое"
+
+
+@pytest.mark.asyncio
 async def test_match_empty_text_no_call():
     client = FakeClient()
     assert await match_categories(GATE, "", client=client) is None
@@ -172,3 +212,65 @@ async def test_missing_sdk_with_injected_client_returns_none(monkeypatch):
     monkeypatch.setitem(sys.modules, "typesafe_sdk", None)
     monkeypatch.setattr(categories, "_sdk_warned", False)
     assert await match_categories(GATE, "hi", client=FakeClient()) is None
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("логин: ivan.petrov", "логин: <секрет>"),
+        ("Login=admin42", "Login=<секрет>"),
+        ("пароль: Qw3rty!x — проверь", "пароль: <секрет> — проверь"),
+        ("password - s3cr3t", "password - <секрет>"),
+        ("токен ab12cd34ef", "токен <секрет>"),
+        ("Token: xoxb-123-abc", "Token: <секрет>"),
+        (
+            "зайди https://user:p4ss@example.com/admin",
+            "зайди https://<секрет>@example.com/admin",
+        ),
+        (
+            "https://ex.example.com\nivan@example.com\nQw3rty!x9",
+            "https://ex.example.com\n<секрет>\n<секрет>",
+        ),
+    ],
+)
+def test_mask_secrets_masks_credentials(text, expected):
+    from src.categories import mask_secrets
+
+    assert mask_secrets(text) == expected
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Привет! Посмотри, пожалуйста, отчёт за ноябрь",
+        "не могу войти, пароль не подходит",
+        "сбросьте мне пароль, пожалуйста",
+        "создайте новые ключи VPN на amster6",
+        "ключ: abc123XYZ от VPN",
+        "ссылка https://example.com/path?a=1 и почта ivan@example.com",
+        "токены TypeSafe кончились",
+    ],
+)
+def test_mask_secrets_keeps_plain_text(text):
+    from src.categories import mask_secrets
+
+    assert mask_secrets(text) == text
+
+
+@pytest.mark.asyncio
+async def test_match_masks_text_reply_to_and_owner_previous():
+    client = FakeClient()
+    await match_categories(
+        GATE,
+        "пароль: Qw3rty!x",
+        reply_to="логин: ivan42",
+        owner_previous=["https://u:p@host.example/x", "обычный текст"],
+        client=client,
+    )
+    state = client.calls[0]["state"]
+    assert state["message"] == "пароль: <секрет>"
+    assert state["reply_to"] == "логин: <секрет>"
+    assert state["owner_previous"] == [
+        "https://<секрет>@host.example/x",
+        "обычный текст",
+    ]

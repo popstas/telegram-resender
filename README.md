@@ -234,6 +234,9 @@ instances:
       model: jev-latest      # default
       threshold: 0.5         # in (0, 1], default 0.5
       reply_context: false   # default; true sends the replied-to message too
+      after_words: false     # default; true: the gate vetoes word-triggered batches
+      shadow: false          # default; true: only log the verdict
+      owner_context: 0       # default; last N owner messages go into the context
       instructions: >-
         We help clients with web development. Which category does the chat
         message belong to?
@@ -268,6 +271,33 @@ instances:
   `instructions` how to use `reply_to`. In forum topics a message that only
   belongs to a topic is not a reply. Costs one extra Telegram request per reply.
   `run_categories_eval` does the same when the parent is in the export.
+- `after_words: true` makes the gate a veto that runs after `words` when a
+  debounced batch is flushed: a batch classified into a `reject` category (or
+  below `threshold`) is not forwarded. Without it `words` and the gate are
+  alternatives ("or"). `shadow: true` only logs the verdict and forwards the
+  batch anyway, for tuning. `owner_context: N` adds the last N messages of the
+  chat owner (not older than 24 hours) to the gate context; `0` disables it.
+  With `after_words` the gate never forwards a message on its own (without a
+  word); it only vetoes word-triggered batches (with `debounce_ms` the whole
+  batch, otherwise the single trigger message). It sees the texts of the batch
+  joined by newlines. It is skipped (the batch is forwarded) when the batch has
+  an attachment without text (photo, sticker, ...) or no text at all, and fails
+  open on a TypeSafe error. A rejection blocks every destination (chat,
+  webhook, `target_file`, `target_bot`). Batches opened by a `prompt` are not
+  gated. The owner's messages go into the state as `owner_previous` (a list,
+  oldest first); say in `instructions` that they are context only.
+  `reply_context` is not used in this mode: the gate does not get `reply_to`.
+  Every verdict is logged at info with the instance, chat, message ids and the
+  winning category (the most likely one over `forward` and `reject`); a
+  rejection also logs `p_forward` and the probabilities, and in `shadow` mode
+  the line says `shadow` and the batch is sent. Caveat: with `once_per_chat` a
+  batch rejected by the gate still consumes the chat's daily slot.
+- Credentials are masked before anything is sent to TypeSafe (`message`,
+  `reply_to`, `owner_previous`): `user:pass@` in URLs, the value after
+  `логин`/`login`/`пароль`/`password`/`токен`/`token` (after `:`, `=`, a dash,
+  or a space when the value has a digit or a symbol), and a password-like line
+  (one token, 8-64 characters, with a digit) together with the e-mail line above
+  it all become `<секрет>`. `ключ` is not a keyword, so VPN keys are kept.
 - Quotes are marked. Telegram sends a quote block (plain or expandable) as a
   `MessageEntityBlockquote` entity, so the plain text mixes the author's answer
   with the quoted comment. The gate gets the text with every quote line
@@ -601,6 +631,30 @@ gate sees them. Options: `--out DIR`
 Stdout shows forwarded/total per label, precision/recall, the acceptance checks
 and the misses (ids only, no message text). The full report with texts is
 written to `<out>/categories-eval-<label>.json`.
+
+#### `--rows`: JSONL input with owner context
+
+For a gate that sees the account owner's earlier messages (`owner_context`),
+pass ready-made rows instead of `--export`/`--gold` (the two modes are mutually
+exclusive):
+
+```bash
+python -m src.run_categories_eval --instance "Inst" --rows data/evals/rows.jsonl --label dm-gate
+```
+
+One JSON object per line; `text` goes to the gate as is (for a debounce batch
+it is the messages joined by `\n`), `owner_previous` (list of strings) and
+`chat` (string, the chat name the live gate sends as `chat`) are optional:
+
+```json
+{"id": "r1", "text": "Need a quote for the project", "owner_previous": ["Sent you the price list"], "label": "forward"}
+```
+
+`label` is `forward` or `reject` (a gate category name is accepted too);
+unknown labels abort the run, as does a malformed or wrongly typed row
+(the error names `path:line`). Acceptance in this mode: no errors, at most one
+missed `forward` row, and at least 60% of `reject` rows not forwarded. The
+report and stdout refer to rows by `id`.
 
 ### Langfuse tracing
 

@@ -113,6 +113,9 @@ instances:
     #   model: jev-latest   # default
     #   threshold: 0.5      # in (0, 1], default 0.5
     #   reply_context: false  # true: send the replied-to message as `reply_to`
+    #   after_words: false  # true: gate is a veto on word-triggered batches
+    #   shadow: false       # true: only log the verdict, never block
+    #   owner_context: 0    # last N owner messages (<= 24h) as context, 0 = off
     #   instructions: >-
     #     We help clients with web development. Which category does the chat
     #     message belong to?

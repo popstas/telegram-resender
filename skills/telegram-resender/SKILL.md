@@ -50,7 +50,8 @@ instance-options.md for each option's meaning and allowed values.
     `forward_message` (`show_trigger`, `show_category`, `show_source`, `prefix`, `suffix`)
   - AI scoring: `prompts` (`name`, `prompt`, `threshold`, optional Langfuse keys)
   - AI categorization: `categories` (`instructions`, `forward`, `reject`,
-    `threshold`, `model`, `reply_context`); needs global `typesafe_api_key`
+    `threshold`, `model`, `reply_context`, `after_words`, `shadow`,
+    `owner_context`); needs global `typesafe_api_key`
   - folder automation: `folder_mute`, `folder_add_topic`
   - misc: `ignore_usernames_override`, `ignore_bots` (per-instance override; set
     `false` when the trigger is posted by a bot and global `ignore_bots` is on),

@@ -3,6 +3,27 @@
 All notable changes to this project are documented here.
 
 
+## Unreleased
+
+### Features
+
+- eval: JSONL rows input with owner context
+- categories: After_words gate vetoes word-triggered batches
+- categories: Owner messages as gate context
+- categories: After_words, shadow and owner_context gate options
+
+### Bug Fixes
+
+- categories: Gate log names the winning category; docs for after_words
+
+### Documentation
+
+- Employees DM gate design and plan
+
+### Refactor
+
+- categories: Structural fail-open around the batch gate
+
 ## v0.7.1 - 2026-11-27
 
 ### Features

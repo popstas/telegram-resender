@@ -6,7 +6,9 @@ from types import SimpleNamespace
 import pytest
 from telethon import types
 
-from src import app, config as config_module, run_categories_eval, target_file
+from src import app
+from src import config as config_module
+from src import run_categories_eval, target_file
 from src import telegram_utils as tgu
 from src.config import TargetFile
 from src.telegram_utils import mark_quotes, quoted_text
@@ -24,27 +26,27 @@ def quote(before: str, quoted: str, collapsed: bool | None = None):
     )
 
 
-TAIL = "\nTask: Website / publish\n\nLink: https://example.com/task/1"
+TAIL = "\nTask: Blog post\n\nLink: https://example.com/task/1"
 
 
 def test_latin_quote_after_reply():
     head = "Ann Smith:\nok\n"
-    q = "You closed it without publishing.\nPlease cancel such tasks.\n"
+    q = "The draft looks good.\nPlease add a summary.\n"
     text = head + q + TAIL
     assert mark_quotes(text, [quote(head, q)]) == (
         "Ann Smith:\nok\n"
-        "> You closed it without publishing.\n"
-        "> Please cancel such tasks.\n" + TAIL
+        "> The draft looks good.\n"
+        "> Please add a summary.\n" + TAIL
     )
 
 
 def test_cyrillic_quote_keeps_blank_line_before_task():
-    head = "Иванова Анна:\nЗдесь у нас правило 1500, работаем по предоплате\n"
-    q = "Почему мы опубликовали до оплаты?\n"
-    text = head + q + "\nЗадача: Публикация\n\nСсылка: https://example.com/c/2"
+    head = "Иванова Анна:\nСпасибо, посмотрю вечером\n"
+    q = "Когда будет готов отчёт?\n"
+    text = head + q + "\nЗадача: Отчёт\n\nСсылка: https://example.com/c/2"
     assert mark_quotes(text, [quote(head, q)]) == (
-        head + "> Почему мы опубликовали до оплаты?\n"
-        "\nЗадача: Публикация\n\nСсылка: https://example.com/c/2"
+        head + "> Когда будет готов отчёт?\n"
+        "\nЗадача: Отчёт\n\nСсылка: https://example.com/c/2"
     )
 
 
@@ -89,6 +91,23 @@ def test_quote_mid_line_starts_on_new_line():
     assert mark_quotes(text, [quote(head, q)]) == "see:\n> quoted\ntail"
 
 
+def test_text_between_quotes_that_end_mid_line_starts_on_new_line():
+    ents = [
+        types.MessageEntityBlockquote(offset=0, length=2),
+        types.MessageEntityBlockquote(offset=7, length=2),
+    ]
+    assert mark_quotes("q1 mid q2", ents) == "> q1\n mid \n> q2"
+
+
+def test_adjacent_quotes_each_start_on_new_line():
+    ents = [
+        types.MessageEntityBlockquote(offset=0, length=2),
+        types.MessageEntityBlockquote(offset=2, length=2),
+    ]
+    # touching spans are merged into one quote
+    assert mark_quotes("q1q2", ents) == "> q1q2"
+
+
 def test_quote_at_start_and_end_of_text():
     q = "only quote"
     assert mark_quotes(q, [quote("", q)]) == "> only quote"
@@ -126,7 +145,9 @@ def test_empty_text():
 
 def test_quoted_text_prefers_message_and_falls_back_to_raw_text():
     head, q = "Анна:\nок\n", "замечание\n"
-    msg = SimpleNamespace(message=head + q, raw_text=head + q, entities=[quote(head, q)])
+    msg = SimpleNamespace(
+        message=head + q, raw_text=head + q, entities=[quote(head, q)]
+    )
     assert quoted_text(msg) == head + "> замечание\n"
     assert quoted_text(SimpleNamespace(raw_text="plain")) == "plain"
     assert quoted_text(SimpleNamespace(message=None, raw_text=None)) is None
@@ -145,7 +166,7 @@ async def test_target_file_writes_marked_quote(tmp_path, monkeypatch):
 
     monkeypatch.setattr(tgu, "get_message_source", fake_source)
     monkeypatch.setattr(tgu, "_get_full_sender", fake_full_sender)
-    head, q = "Анна:\nок\n", "Переведи в отменённые 🙏\n"
+    head, q = "Анна:\nок\n", "Добавь картинку 🙏\n"
     text = head + q + "\nЗадача: тест"
     msg = SimpleNamespace(
         id=5,
@@ -164,7 +185,7 @@ async def test_target_file_writes_marked_quote(tmp_path, monkeypatch):
         content = f.read()
     assert content == (
         "Forwarded from: private @bot\n\n"
-        "Анна:\nок\n> Переведи в отменённые 🙏\n\nЗадача: тест\n"
+        "Анна:\nок\n> Добавь картинку 🙏\n\nЗадача: тест\n"
     )
 
 
@@ -238,15 +259,13 @@ def _setup(monkeypatch, tmp_path, *, words=None, reply_context=False):
 
 
 @pytest.mark.asyncio
-async def test_gate_gets_marked_text_words_and_prompts_get_plain(
-    monkeypatch, tmp_path
-):
+async def test_gate_gets_marked_text_words_and_prompts_get_plain(monkeypatch, tmp_path):
     inst, cat_calls, prompt_calls = _setup(monkeypatch, tmp_path, words=["нет-такого"])
-    head, q = "Анна:\nок\n", "Смени статус\n"
+    head, q = "Анна:\nок\n", "Добавь ссылку\n"
     text = head + q + TAIL
     msg = _Msg(text, [quote(head, q)])
     await app.process_message(inst, SimpleNamespace(message=msg, chat_id=1))
-    assert cat_calls == [(head + "> Смени статус\n" + TAIL, None)]
+    assert cat_calls == [(head + "> Добавь ссылку\n" + TAIL, None)]
     assert prompt_calls == [text]
 
 

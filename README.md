@@ -280,10 +280,10 @@ instances:
   ```text
   Ann Smith:
   ok
-  > You closed it without publishing.
-  > Please cancel such tasks.
+  > The draft looks good.
+  > Please add a summary.
 
-  Task: Website / publish
+  Task: Blog post
   ```
 
 ## Configurable forwarded message

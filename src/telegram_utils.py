@@ -103,6 +103,13 @@ def _blockquote_spans(entities, size: int) -> list[tuple[int, int]]:
     return merged
 
 
+def _append_line(result: str, chunk: str) -> str:
+    """Append plain ``chunk``; after a quote that ended mid-line, on a new line."""
+    if chunk and result and not result.endswith("\n") and not chunk.startswith("\n"):
+        return f"{result}\n{chunk}"
+    return result + chunk
+
+
 def mark_quotes(text: str | None, entities) -> str | None:
     """Return ``text`` with every blockquote line prefixed by ``"> "``.
 
@@ -121,7 +128,7 @@ def mark_quotes(text: str | None, entities) -> str | None:
         result = ""
         pos = 0
         for start, end in spans:
-            result += del_surrogate(units[pos:start])
+            result = _append_line(result, del_surrogate(units[pos:start]))
             if result and not result.endswith("\n"):
                 result += "\n"
             quote = del_surrogate(units[start:end])
@@ -133,10 +140,7 @@ def mark_quotes(text: str | None, entities) -> str | None:
             )
             result += tail
             pos = end
-        rest = del_surrogate(units[pos:])
-        if rest and not result.endswith("\n") and not rest.startswith("\n"):
-            result += "\n"
-        return result + rest
+        return _append_line(result, del_surrogate(units[pos:]))
     except UnicodeError:  # an offset splits a surrogate pair
         logger.warning("Failed to mark quotes, using the plain text")
         return text

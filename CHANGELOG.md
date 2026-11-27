@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 
 
+## Unreleased
+
+### Features
+
+- categories: Mark Telegram quotes with "> " for the gate and target_file
+
 ## v0.7.0 - 2026-11-16
 
 ### Features

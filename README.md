@@ -268,6 +268,23 @@ instances:
   `instructions` how to use `reply_to`. In forum topics a message that only
   belongs to a topic is not a reply. Costs one extra Telegram request per reply.
   `run_categories_eval` does the same when the parent is in the export.
+- Quotes are marked. Telegram sends a quote block (plain or expandable) as a
+  `MessageEntityBlockquote` entity, so the plain text mixes the author's answer
+  with the quoted comment. The gate gets the text with every quote line
+  prefixed by `> ` (an empty quote line becomes `>`, a quote always starts on a
+  new line); `reply_to` is marked the same way. Say in `instructions` that
+  `>` lines are the quoted comment. `words`, `ignore_words`, `negative_words`
+  and `prompts` still see the plain text, and a message without quotes is not
+  changed.
+
+  ```text
+  Ann Smith:
+  ok
+  > The draft looks good.
+  > Please add a summary.
+
+  Task: Blog post
+  ```
 
 ## Configurable forwarded message
 
@@ -461,7 +478,8 @@ instances:
   titles. An existing name gets a `_2`, `_3`, … suffix.
 - Content: the first line is the `Forwarded from: …` source line (the
   `{source}` placeholder of `message_template`), then the text of every message
-  in the batch in order, separated by blank lines. Attachments are not saved,
+  in the batch in order, separated by blank lines. Quote lines start with `> `,
+  as in the categories gate. Attachments are not saved,
   only their Telethon kind (`photo`, `video`, `document`, `voice`, `sticker`, …):
   a caption is preceded by a `[вложение: <kind>]` line, an attachment without
   text becomes `[вложение без текста: <kind>, не сохранено]`. Link previews are
@@ -575,7 +593,9 @@ without connecting to Telegram; `--categories` only needs `TYPESAFE_API_KEY`.
 Gold is a JSON list of `{"chat_id", "message_id", "label", "is_bot"}` (extra
 keys such as `note` are ignored). Messages with `is_bot: true` are skipped
 (mimics `ignore_bots`), messages without a gold row count as `unlabeled`, and
-messages whose API call failed count as `errors`. Options: `--out DIR`
+messages whose API call failed count as `errors`. Quotes in the export
+(`MessageEntityBlockquote` in `entities`) are marked with `> ` the way the live
+gate sees them. Options: `--out DIR`
 (default `data/evals`), `--concurrency N` (default 4), `--label NAME`.
 
 Stdout shows forwarded/total per label, precision/recall, the acceptance checks

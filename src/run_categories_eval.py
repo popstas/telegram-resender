@@ -12,6 +12,7 @@ import yaml
 
 from . import categories
 from .config import CategoriesGate, _parse_categories, load_config
+from .telegram_utils import mark_quotes
 
 
 def _chat_id(msg: dict) -> int | None:
@@ -26,13 +27,15 @@ def load_export(paths: list[str]) -> list[dict]:
     """Read export files into ``{"chat_id", "message_id", "text"}`` rows, skipping empty messages.
 
     A reply also gets ``reply_to``: the parent text when the parent is in the exports.
+    Quotes (``MessageEntityBlockquote`` in ``entities``) are marked with ``"> "``,
+    the way the live gate sees them.
     """
     rows: list[dict] = []
     for path in paths:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
         for msg in data:
-            text = msg.get("message")
+            text = mark_quotes(msg.get("message"), msg.get("entities"))
             if not text:
                 continue
             row = {"chat_id": _chat_id(msg), "message_id": int(msg["id"]), "text": text}

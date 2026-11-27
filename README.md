@@ -292,6 +292,12 @@ instances:
   rejection also logs `p_forward` and the probabilities, and in `shadow` mode
   the line says `shadow` and the batch is sent. Caveat: with `once_per_chat` a
   batch rejected by the gate still consumes the chat's daily slot.
+- Credentials are masked before anything is sent to TypeSafe (`message`,
+  `reply_to`, `owner_previous`): `user:pass@` in URLs, the value after
+  `логин`/`login`/`пароль`/`password`/`токен`/`token` (after `:`, `=`, a dash,
+  or a space when the value has a digit or a symbol), and a password-like line
+  (one token, 8-64 characters, with a digit) together with the e-mail line above
+  it all become `<секрет>`. `ключ` is not a keyword, so VPN keys are kept.
 - Quotes are marked. Telegram sends a quote block (plain or expandable) as a
   `MessageEntityBlockquote` entity, so the plain text mixes the author's answer
   with the quoted comment. The gate gets the text with every quote line

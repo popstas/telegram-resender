@@ -212,3 +212,65 @@ async def test_missing_sdk_with_injected_client_returns_none(monkeypatch):
     monkeypatch.setitem(sys.modules, "typesafe_sdk", None)
     monkeypatch.setattr(categories, "_sdk_warned", False)
     assert await match_categories(GATE, "hi", client=FakeClient()) is None
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("логин: ivan.petrov", "логин: <секрет>"),
+        ("Login=admin42", "Login=<секрет>"),
+        ("пароль: Qw3rty!x — проверь", "пароль: <секрет> — проверь"),
+        ("password - s3cr3t", "password - <секрет>"),
+        ("токен ab12cd34ef", "токен <секрет>"),
+        ("Token: xoxb-123-abc", "Token: <секрет>"),
+        (
+            "зайди https://user:p4ss@example.com/admin",
+            "зайди https://<секрет>@example.com/admin",
+        ),
+        (
+            "https://ex.example.com\nivan@example.com\nQw3rty!x9",
+            "https://ex.example.com\n<секрет>\n<секрет>",
+        ),
+    ],
+)
+def test_mask_secrets_masks_credentials(text, expected):
+    from src.categories import mask_secrets
+
+    assert mask_secrets(text) == expected
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Привет! Посмотри, пожалуйста, отчёт за ноябрь",
+        "не могу войти, пароль не подходит",
+        "сбросьте мне пароль, пожалуйста",
+        "создайте новые ключи VPN на amster6",
+        "ключ: abc123XYZ от VPN",
+        "ссылка https://example.com/path?a=1 и почта ivan@example.com",
+        "токены TypeSafe кончились",
+    ],
+)
+def test_mask_secrets_keeps_plain_text(text):
+    from src.categories import mask_secrets
+
+    assert mask_secrets(text) == text
+
+
+@pytest.mark.asyncio
+async def test_match_masks_text_reply_to_and_owner_previous():
+    client = FakeClient()
+    await match_categories(
+        GATE,
+        "пароль: Qw3rty!x",
+        reply_to="логин: ivan42",
+        owner_previous=["https://u:p@host.example/x", "обычный текст"],
+        client=client,
+    )
+    state = client.calls[0]["state"]
+    assert state["message"] == "пароль: <секрет>"
+    assert state["reply_to"] == "логин: <секрет>"
+    assert state["owner_previous"] == [
+        "https://<секрет>@host.example/x",
+        "обычный текст",
+    ]

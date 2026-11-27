@@ -2452,18 +2452,43 @@ async def test_after_words_reject_blocks_flush(
 async def test_after_words_reject_is_logged(
     monkeypatch, dummy_message_cls, tmp_path, caplog
 ):
+    from src.categories import CategoryMatch
+
     _cat_setup(monkeypatch, tmp_path, [])
-    _spy_gate(monkeypatch, _match(forward=False))
+    probabilities = {"lead_direct": 0.1, "thanks": 0.9}
+    _spy_gate(
+        monkeypatch,
+        CategoryMatch(
+            category="lead_direct",
+            probability=0.1,
+            p_forward=0.1,
+            forward=False,
+            probabilities=probabilities,
+        ),
+    )
+    _spy_forward(monkeypatch)
+    inst = _after_inst(categories_kw={"reject": {"thanks": None}})
+    with caplog.at_level(logging.INFO):
+        await _flush(monkeypatch, inst, [_after_msg(dummy_message_cls, 7, "привет")])
+    text = caplog.text
+    assert "gate rejected batch a n [7]: thanks p_forward=0.10" in text
+    assert "p_forward=0.10" in text and "lead_direct': 0.1" in text
+    assert "shadow" not in text
+
+
+@pytest.mark.asyncio
+async def test_after_words_forward_verdict_is_logged(
+    monkeypatch, dummy_message_cls, tmp_path, caplog
+):
+    _cat_setup(monkeypatch, tmp_path, [])
+    _spy_gate(monkeypatch, _match())
     _spy_forward(monkeypatch)
     with caplog.at_level(logging.INFO):
         await _flush(
-            monkeypatch, _after_inst(), [_after_msg(dummy_message_cls, 7, "привет")]
+            monkeypatch, _after_inst(), [_after_msg(dummy_message_cls, 8, "привет")]
         )
     text = caplog.text
-    assert "gate rejected batch" in text
-    assert "[7]" in text and "lead_direct" in text
-    assert "p_forward=0.10" in text and "lead_direct': 0.8" in text
-    assert "shadow" not in text
+    assert "gate forwarded batch a n [8]: lead_direct p_forward=0.80" in text
 
 
 @pytest.mark.asyncio

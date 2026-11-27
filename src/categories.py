@@ -88,6 +88,13 @@ def evaluate_probabilities(
     return category, fwd[category], p_forward, p_forward >= gate.threshold
 
 
+def top_category(probabilities: dict[str, float]) -> str | None:
+    """Name of the most likely category over forward AND reject, ``None`` if empty."""
+    if not probabilities:
+        return None
+    return max(probabilities, key=lambda n: probabilities[n])
+
+
 async def match_categories(
     gate: "CategoriesGate",
     text: str,

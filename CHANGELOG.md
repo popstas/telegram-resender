@@ -7,9 +7,14 @@ All notable changes to this project are documented here.
 
 ### Features
 
+- eval: JSONL rows input with owner context
 - categories: After_words gate vetoes word-triggered batches
 - categories: Owner messages as gate context
 - categories: After_words, shadow and owner_context gate options
+
+### Bug Fixes
+
+- categories: Gate log names the winning category; docs for after_words
 
 ### Documentation
 

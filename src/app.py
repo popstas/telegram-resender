@@ -20,7 +20,7 @@ from . import (
     telegram_utils,
     webhook,
 )
-from .categories import CategoryMatch, match_categories, reply_parent_id
+from .categories import CategoryMatch, match_categories, reply_parent_id, top_category
 from .config import (
     Instance,
     get_api_credentials,
@@ -426,14 +426,24 @@ async def gate_batch(inst: Instance, batch: list) -> tuple[bool, CategoryMatch |
     if match is None:
         return True, None
     stats.add_typesafe_tokens(inst.name, match.input_tokens)
+    winner = top_category(match.probabilities)
     if match.forward:
+        logger.info(
+            "gate forwarded batch %s %s %s: %s p_forward=%.2f",
+            inst.name,
+            chat_name,
+            ids,
+            winner,
+            match.p_forward,
+        )
         return True, match
     logger.info(
-        "gate %s batch %s %s: %s p_forward=%.2f probabilities=%s",
+        "gate %s batch %s %s %s: %s p_forward=%.2f probabilities=%s",
         "shadow: would reject" if gate.shadow else "rejected",
+        inst.name,
         chat_name,
         ids,
-        match.category,
+        winner,
         match.p_forward,
         match.probabilities,
     )

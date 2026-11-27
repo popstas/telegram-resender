@@ -6,7 +6,13 @@ import yaml
 
 from src import categories
 from src.config import CategoriesGate
-from src.run_categories_eval import acceptance, compute_metrics, load_export, run_eval
+from src.run_categories_eval import (
+    acceptance,
+    compute_metrics,
+    load_export,
+    load_rows,
+    run_eval,
+)
 
 GATE = CategoriesGate(
     instructions="q",
@@ -504,3 +510,53 @@ async def test_export_mode_requires_export_and_gold(tmp_path, monkeypatch):
     for extra in ([], ["--export", "e.json"], ["--gold", "g.json"]):
         with pytest.raises(SystemExit):
             await run_eval(["--categories", str(cat), *extra], client=object())
+
+
+@pytest.mark.asyncio
+async def test_rows_chat_is_passed_as_chat_name(tmp_path, monkeypatch):
+    monkeypatch.setattr(categories, "config", {})
+    argv = _rows_argv(
+        tmp_path,
+        [
+            {"id": "c1", "text": "with chat", "chat": "Acme DM", "label": "forward"},
+            {"id": "c2", "text": "no chat", "label": "reject"},
+        ],
+    )
+    client = RecordingClient()
+    await run_eval(argv, client=client)
+    by_text = {s["message"]: s for s in client.states}
+    assert by_text["with chat"]["chat"] == "Acme DM"
+    assert "chat" not in by_text["no chat"]
+
+
+@pytest.mark.parametrize(
+    "line, fragment",
+    [
+        ('{"id": "a", "text": "t", "label": "forward"', "rows.jsonl:2"),
+        ('{"id": "a", "text": 5, "label": "forward"}', "rows.jsonl:2: text"),
+        ('{"id": "a", "text": "t", "label": 1}', "rows.jsonl:2: label"),
+        (
+            '{"id": "a", "text": "t", "label": "forward", "owner_previous": "x"}',
+            "rows.jsonl:2: owner_previous",
+        ),
+        (
+            '{"id": "a", "text": "t", "label": "forward", "owner_previous": [1]}',
+            "rows.jsonl:2: owner_previous",
+        ),
+        (
+            '{"id": "a", "text": "t", "label": "forward", "chat": 7}',
+            "rows.jsonl:2: chat",
+        ),
+        ("[1, 2]", "rows.jsonl:2"),
+    ],
+)
+def test_load_rows_rejects_bad_rows(tmp_path, line, fragment):
+    path = tmp_path / "rows.jsonl"
+    path.write_text(
+        '{"id": "ok", "text": "t", "label": "reject"}\n' + line + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(SystemExit) as exc:
+        load_rows(str(path))
+    assert str(path).replace("rows.jsonl", "") in str(exc.value)
+    assert fragment in str(exc.value)

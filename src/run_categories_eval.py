@@ -52,22 +52,44 @@ def load_export(paths: list[str]) -> list[dict]:
 
 
 def load_rows(path: str) -> list[dict]:
-    """Read JSONL ``{"id", "text", "label", "owner_previous"?}`` rows (blank lines skipped)."""
+    """Read JSONL ``{"id", "text", "label", "owner_previous"?, "chat"?}`` rows.
+
+    Blank lines are skipped; a malformed line or a wrong value type aborts with
+    ``path:line``. ``chat`` (the chat name) goes into the gate state like live.
+    """
     rows: list[dict] = []
     with open(path, "r", encoding="utf-8") as f:
         for n, line in enumerate(f, 1):
             if not line.strip():
                 continue
-            raw = json.loads(line)
+            where = f"{path}:{n}"
+            try:
+                raw = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise SystemExit(f"{where}: invalid JSON: {exc.msg}") from exc
+            if not isinstance(raw, dict):
+                raise SystemExit(f"{where}: row must be a JSON object")
             missing = [k for k in ("id", "text", "label") if k not in raw]
             if missing:
-                raise SystemExit(f"{path}:{n}: missing keys: {', '.join(missing)}")
+                raise SystemExit(f"{where}: missing keys: {', '.join(missing)}")
+            for key in ("text", "label"):
+                if not isinstance(raw[key], str):
+                    raise SystemExit(f"{where}: {key} must be a string")
+            previous = raw.get("owner_previous") or []
+            if not isinstance(previous, list) or not all(
+                isinstance(t, str) for t in previous
+            ):
+                raise SystemExit(f"{where}: owner_previous must be a list of strings")
+            chat = raw.get("chat")
+            if chat is not None and not isinstance(chat, str):
+                raise SystemExit(f"{where}: chat must be a string")
             rows.append(
                 {
                     "id": str(raw["id"]),
                     "text": raw["text"],
                     "label": raw["label"],
-                    "owner_previous": list(raw.get("owner_previous") or []),
+                    "owner_previous": list(previous),
+                    "chat": chat,
                 }
             )
     return rows
@@ -208,12 +230,6 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     return args
 
 
-def _argmax(probabilities: dict[str, float]) -> str | None:
-    if not probabilities:
-        return None
-    return max(probabilities, key=lambda n: probabilities[n])
-
-
 async def run_eval(argv: list[str] | None = None, client=None) -> Path:
     """Run the evaluation and return the path of the written JSON report."""
     args = _parse_args(argv)
@@ -271,6 +287,7 @@ async def run_eval(argv: list[str] | None = None, client=None) -> Path:
             match = await categories.match_categories(
                 gate,
                 item["text"],
+                item.get("chat"),
                 reply_to=item.get("reply_to"),
                 client=client,
                 **extra,
@@ -283,7 +300,7 @@ async def run_eval(argv: list[str] | None = None, client=None) -> Path:
         return {
             **row,
             "error": False,
-            "category": _argmax(match.probabilities),
+            "category": categories.top_category(match.probabilities),
             "top_category": match.category,
             "forward": match.forward,
             "p_forward": match.p_forward,

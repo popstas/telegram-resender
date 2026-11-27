@@ -31,7 +31,7 @@ This project forwards Telegram messages that match specific rules to a target ch
 │   ├── target_file.py    # target_file inbox-file delivery
 │   ├── target_bot.py     # target_bot delivery via Telegram Bot API
 │   ├── categories.py     # TypeSafe (Jev) categories gate
-│   ├── run_categories_eval.py # categories gate eval over chat exports + gold
+│   ├── run_categories_eval.py # categories gate eval: chat exports + gold, or --rows JSONL
 │   └── __init__.py       # marks package
 ├── scripts/
 │   └── test_webhook_server.py  # manual webhook listener (port 8002)

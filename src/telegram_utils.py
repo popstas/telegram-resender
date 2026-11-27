@@ -4,6 +4,7 @@ import re
 from typing import TYPE_CHECKING, List, Sequence, Set
 
 from telethon import errors, functions, types
+from telethon.helpers import add_surrogate, del_surrogate
 from telethon.utils import get_peer_id, resolve_id
 
 if TYPE_CHECKING:  # pragma: no cover - used for type hints only
@@ -67,6 +68,86 @@ def find_word(words: List[str], text: str) -> str | None:
         if word.lower() in text_lower:
             return word
     return None
+
+
+def _blockquote_spans(entities, size: int) -> list[tuple[int, int]]:
+    """Return sorted, merged ``(start, end)`` blockquote spans in UTF-16 units.
+
+    ``entities`` holds Telethon entities or their JSON export (dicts with
+    ``"_": "MessageEntityBlockquote"``). Spans are clamped to ``size``.
+    """
+    spans: list[tuple[int, int]] = []
+    for ent in entities:
+        if isinstance(ent, dict):
+            if ent.get("_") != "MessageEntityBlockquote":
+                continue
+            offset, length = ent.get("offset"), ent.get("length")
+        elif isinstance(ent, types.MessageEntityBlockquote):
+            offset, length = ent.offset, ent.length
+        else:
+            continue
+        try:
+            start = max(0, int(offset))
+            end = min(size, int(offset) + int(length))
+        except (TypeError, ValueError):
+            continue
+        if end > start:
+            spans.append((start, end))
+    spans.sort()
+    merged: list[tuple[int, int]] = []
+    for start, end in spans:
+        if merged and start <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        else:
+            merged.append((start, end))
+    return merged
+
+
+def mark_quotes(text: str | None, entities) -> str | None:
+    """Return ``text`` with every blockquote line prefixed by ``"> "``.
+
+    Telegram sends quotes (plain and expandable) as ``MessageEntityBlockquote``
+    entities, whose offsets count UTF-16 code units. A quote always starts on a
+    new line; an empty quote line becomes ``">"``. Text without blockquote
+    entities is returned unchanged.
+    """
+    if not text or not isinstance(entities, (list, tuple)) or not entities:
+        return text
+    try:
+        units = add_surrogate(text)
+        spans = _blockquote_spans(entities, len(units))
+        if not spans:
+            return text
+        result = ""
+        pos = 0
+        for start, end in spans:
+            result += del_surrogate(units[pos:start])
+            if result and not result.endswith("\n"):
+                result += "\n"
+            quote = del_surrogate(units[start:end])
+            tail = ""
+            if quote.endswith("\n"):
+                quote, tail = quote[:-1], "\n"
+            result += "\n".join(
+                f"> {line}" if line.strip() else ">" for line in quote.split("\n")
+            )
+            result += tail
+            pos = end
+        rest = del_surrogate(units[pos:])
+        if rest and not result.endswith("\n") and not rest.startswith("\n"):
+            result += "\n"
+        return result + rest
+    except UnicodeError:  # an offset splits a surrogate pair
+        logger.warning("Failed to mark quotes, using the plain text")
+        return text
+
+
+def quoted_text(message) -> str | None:
+    """Text of a Telethon ``message`` with its quotes marked by ``"> "``."""
+    text = getattr(message, "message", None)
+    if not isinstance(text, str) or not text:
+        text = getattr(message, "raw_text", None)
+    return mark_quotes(text, getattr(message, "entities", None))
 
 
 async def get_entity(ident):

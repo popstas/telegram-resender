@@ -96,9 +96,10 @@ def media_type(message: Any) -> str | None:
 def message_body(message: Any) -> str:
     """Return the text of ``message`` with a line naming its attachment, or ``""``.
 
-    Attachments are not saved; only their kind is recorded.
+    Attachments are not saved; only their kind is recorded. Quote lines start
+    with ``"> "``.
     """
-    text = getattr(message, "message", None) or getattr(message, "raw_text", None)
+    text = telegram_utils.quoted_text(message)
     kind = media_type(message)
     if kind and text:
         return f"[вложение: {kind}]\n{text}"

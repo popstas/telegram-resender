@@ -41,6 +41,7 @@ from .telegram_utils import (
     get_message_url,
     mute_chats_from_folders,
     normalize_chat_ids,
+    quoted_text,
     resolve_entities,
     word_in_text,
 )
@@ -342,7 +343,7 @@ async def _debounce_message(
 
 
 async def get_reply_text(message) -> str | None:
-    """Text of the message ``message`` replies to, or ``None``."""
+    """Text of the message ``message`` replies to (quotes marked), or ``None``."""
     if reply_parent_id(getattr(message, "reply_to", None)) is None:
         return None
     try:
@@ -350,7 +351,7 @@ async def get_reply_text(message) -> str | None:
     except Exception as exc:
         logger.warning("Failed to load reply parent of %s: %s", message.id, exc)
         return None
-    return (getattr(parent, "raw_text", None) or None) if parent else None
+    return (quoted_text(parent) or None) if parent else None
 
 
 async def process_message(inst: Instance, event: events.NewMessage.Event) -> None:
@@ -394,8 +395,10 @@ async def process_message(inst: Instance, event: events.NewMessage.Event) -> Non
             reply_to = (
                 await get_reply_text(message) if inst.categories.reply_context else None
             )
+            # Quotes are marked with "> " so the gate tells the author's text
+            # from the quoted comment; words and prompts see the plain text.
             match = await match_categories(
-                inst.categories, message.raw_text, chat_name, reply_to=reply_to
+                inst.categories, quoted_text(message), chat_name, reply_to=reply_to
             )
             if match:
                 stats.add_typesafe_tokens(inst.name, match.input_tokens)

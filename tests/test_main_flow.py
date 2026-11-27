@@ -2394,8 +2394,8 @@ async def _feed(inst, messages):
         await app.process_message(inst, SimpleNamespace(message=m, chat_id=10))
 
 
-async def _flush(monkeypatch, inst, messages):
-    """Feed ``messages`` through a debounce window and fire the flush."""
+async def _flush(monkeypatch, inst, messages, *, fire=True):
+    """Feed ``messages`` through a debounce window and (by default) fire the flush."""
     from src.debounce import DebounceManager
 
     scheduler = _FakeScheduler()
@@ -2403,7 +2403,8 @@ async def _flush(monkeypatch, inst, messages):
         app, "debounce_manager", DebounceManager(clock=lambda: 0.0, scheduler=scheduler)
     )
     await _feed(inst, messages)
-    scheduler.fire_last()
+    if fire:
+        scheduler.fire_last()
     await asyncio.sleep(0.01)
 
 
@@ -2686,22 +2687,14 @@ async def test_after_words_message_without_word_does_not_call_gate(
     _cat_setup(monkeypatch, tmp_path, [])
     cat_calls = _spy_gate(monkeypatch, _match())
     fwd = _spy_forward(monkeypatch)
-    await _flush_nothing(
-        monkeypatch, _after_inst(), [_after_msg(dummy_message_cls, 1, "добрый день")]
+    await _flush(
+        monkeypatch,
+        _after_inst(),
+        [_after_msg(dummy_message_cls, 1, "добрый день")],
+        fire=False,
     )
     assert cat_calls == []
     assert fwd == []
-
-
-async def _flush_nothing(monkeypatch, inst, messages):
-    from src.debounce import DebounceManager
-
-    scheduler = _FakeScheduler()
-    monkeypatch.setattr(
-        app, "debounce_manager", DebounceManager(clock=lambda: 0.0, scheduler=scheduler)
-    )
-    await _feed(inst, messages)
-    await asyncio.sleep(0.01)
 
 
 @pytest.mark.asyncio
@@ -2733,3 +2726,39 @@ async def test_after_words_forward_without_debounce_sends(
     assert len(cat_calls) == 1
     assert msg.forwarded == [1]
     assert app.stats.data["stats"]["forwarded_total"] == 1
+
+
+@pytest.mark.asyncio
+async def test_after_words_gate_exception_fails_open(
+    monkeypatch, dummy_message_cls, tmp_path, caplog
+):
+    """An exception inside the gate step must never lose the batch."""
+    _cat_setup(monkeypatch, tmp_path, [])
+
+    async def boom(*a, **k):
+        raise RuntimeError("gate exploded")
+
+    monkeypatch.setattr(app, "match_categories", boom)
+    fwd = _spy_forward(monkeypatch)
+    with caplog.at_level(logging.WARNING):
+        await _flush(
+            monkeypatch, _after_inst(), [_after_msg(dummy_message_cls, 1, "привет")]
+        )
+    assert len(fwd) == 1
+    assert any(r.levelno == logging.WARNING and r.exc_info for r in caplog.records)
+    assert "gate exploded" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_after_words_gate_exception_fails_open_without_debounce(
+    monkeypatch, dummy_message_cls, tmp_path
+):
+    _cat_setup(monkeypatch, tmp_path, [])
+
+    async def boom(*a, **k):
+        raise RuntimeError("gate exploded")
+
+    monkeypatch.setattr(app, "match_categories", boom)
+    msg = _after_msg(dummy_message_cls, 1, "привет")
+    await _feed(_after_inst(debounce_ms=0), [msg])
+    assert msg.forwarded == [1]

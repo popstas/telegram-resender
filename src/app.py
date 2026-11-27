@@ -301,17 +301,10 @@ async def _debounce_message(
     }
 
     async def flush_cb(batch: list, ctx: dict) -> None:
-        if ctx["used_word"] is not None:
-            send, _ = await gate_batch(inst, batch)
-            if not send:
-                stats.increment(
-                    inst.name,
-                    forwarded=False,
-                    used_word=True,
-                    used_prompt=ctx["used_prompt"] is not None,
-                    used_category=True,
-                )
-                return
+        if ctx["used_word"] is not None and not await _word_batch_allowed(
+            inst, batch, ctx["used_prompt"]
+        ):
+            return
         forwarded = await _forward_messages(
             inst,
             batch,
@@ -402,7 +395,6 @@ async def gate_batch(inst: Instance, batch: list) -> tuple[bool, CategoryMatch |
     if not gate or not gate.after_words:
         return True, None
     chat_id = getattr(batch[0], "chat_id", None)
-    chat_name = await get_chat_name(chat_id, safe=True)
     ids = [m.id for m in batch]
     texts = []
     for m in batch:
@@ -410,6 +402,7 @@ async def gate_batch(inst: Instance, batch: list) -> tuple[bool, CategoryMatch |
         if text.strip():
             texts.append(text)
         elif target_file.media_type(m) is not None:
+            chat_name = await get_chat_name(chat_id, safe=True)
             logger.info(
                 "gate bypassed: attachment without text in batch %s %s",
                 chat_name,
@@ -418,6 +411,7 @@ async def gate_batch(inst: Instance, batch: list) -> tuple[bool, CategoryMatch |
             return True, None
     if not texts:
         return True, None
+    chat_name = await get_chat_name(chat_id, safe=True)
     owner_previous = None
     if gate.owner_context > 0 and chat_id is not None:
         owner_previous = await get_owner_context(
@@ -444,6 +438,36 @@ async def gate_batch(inst: Instance, batch: list) -> tuple[bool, CategoryMatch |
         match.probabilities,
     )
     return gate.shadow, match
+
+
+async def _word_batch_allowed(
+    inst: Instance, batch: list, used_prompt: Prompt | None
+) -> bool:
+    """Run the ``after_words`` gate on a word-triggered batch.
+
+    Fail-open: any error inside the gate step logs a warning and lets the batch
+    through. On a veto the not-forwarded stats are counted and ``False`` returned.
+    """
+    try:
+        send, _ = await gate_batch(inst, batch)
+    except Exception as exc:  # pylint: disable=broad-except
+        logger.warning(
+            "gate failed for batch %s of %s, sending anyway: %s",
+            [m.id for m in batch],
+            inst.name,
+            exc,
+            exc_info=True,
+        )
+        return True
+    if not send:
+        stats.increment(
+            inst.name,
+            forwarded=False,
+            used_word=True,
+            used_prompt=used_prompt is not None,
+            used_category=True,
+        )
+    return send
 
 
 async def process_message(inst: Instance, event: events.NewMessage.Event) -> None:
@@ -542,17 +566,12 @@ async def process_message(inst: Instance, event: events.NewMessage.Event) -> Non
         )
         return
 
-    if forward and used_word is not None:
-        send, _ = await gate_batch(inst, [message])
-        if not send:
-            stats.increment(
-                inst.name,
-                forwarded=False,
-                used_word=True,
-                used_prompt=used_prompt is not None,
-                used_category=True,
-            )
-            return
+    if (
+        forward
+        and used_word is not None
+        and not await _word_batch_allowed(inst, [message], used_prompt)
+    ):
+        return
     if forward:
         forward = await _forward_messages(
             inst,

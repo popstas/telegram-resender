@@ -618,6 +618,28 @@ Stdout shows forwarded/total per label, precision/recall, the acceptance checks
 and the misses (ids only, no message text). The full report with texts is
 written to `<out>/categories-eval-<label>.json`.
 
+#### `--rows`: JSONL input with owner context
+
+For a gate that sees the account owner's earlier messages (`owner_context`),
+pass ready-made rows instead of `--export`/`--gold` (the two modes are mutually
+exclusive):
+
+```bash
+python -m src.run_categories_eval --instance "Inst" --rows data/evals/rows.jsonl --label dm-gate
+```
+
+One JSON object per line; `text` goes to the gate as is (for a debounce batch
+it is the messages joined by `\n`), `owner_previous` is optional:
+
+```json
+{"id": "r1", "text": "Need a quote for the project", "owner_previous": ["Sent you the price list"], "label": "forward"}
+```
+
+`label` is `forward` or `reject` (a gate category name is accepted too);
+unknown labels abort the run. Acceptance in this mode: no errors, at most one
+missed `forward` row, and at least 60% of `reject` rows not forwarded. The
+report and stdout refer to rows by `id`.
+
 ### Langfuse tracing
 
 Set `langfuse_public_key` and `langfuse_secret_key` in the config to enable

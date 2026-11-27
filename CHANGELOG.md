@@ -15,6 +15,10 @@ All notable changes to this project are documented here.
 
 - Employees DM gate design and plan
 
+### Refactor
+
+- categories: Structural fail-open around the batch gate
+
 ## v0.7.1 - 2026-11-27
 
 ### Features

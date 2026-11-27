@@ -51,7 +51,46 @@ def load_export(paths: list[str]) -> list[dict]:
     return rows
 
 
-def compute_metrics(rows: list[dict], gate: CategoriesGate) -> dict:
+def load_rows(path: str) -> list[dict]:
+    """Read JSONL ``{"id", "text", "label", "owner_previous"?}`` rows (blank lines skipped)."""
+    rows: list[dict] = []
+    with open(path, "r", encoding="utf-8") as f:
+        for n, line in enumerate(f, 1):
+            if not line.strip():
+                continue
+            raw = json.loads(line)
+            missing = [k for k in ("id", "text", "label") if k not in raw]
+            if missing:
+                raise SystemExit(f"{path}:{n}: missing keys: {', '.join(missing)}")
+            rows.append(
+                {
+                    "id": str(raw["id"]),
+                    "text": raw["text"],
+                    "label": raw["label"],
+                    "owner_previous": list(raw.get("owner_previous") or []),
+                }
+            )
+    return rows
+
+
+def _ref(item: dict) -> dict:
+    """Row identity: ``id`` in --rows mode, chat_id/message_id for exports."""
+    if "id" in item:
+        return {"id": item["id"]}
+    return {"chat_id": item.get("chat_id"), "message_id": item.get("message_id")}
+
+
+def _ref_str(item: dict) -> str:
+    return item["id"] if "id" in item else f"{item['chat_id']}:{item['message_id']}"
+
+
+def _should_forward(label: str, gate: CategoriesGate, binary: bool) -> bool:
+    return label in gate.forward or (binary and label == "forward")
+
+
+def compute_metrics(
+    rows: list[dict], gate: CategoriesGate, binary: bool = False
+) -> dict:
     confusion: dict[str, dict[str, int]] = {}
     by_label: dict[str, list[int]] = {}
     misses: list[dict] = []
@@ -67,13 +106,12 @@ def compute_metrics(rows: list[dict], gate: CategoriesGate) -> dict:
         counts[1] += 1
         counts[0] += int(forwarded)
         brief = {
-            "chat_id": row.get("chat_id"),
-            "message_id": row.get("message_id"),
+            **_ref(row),
             "label": label,
             "predicted": row.get("top_category") or predicted,
             "p_forward": row.get("p_forward"),
         }
-        should = label in gate.forward
+        should = _should_forward(label, gate, binary)
         if forwarded and should:
             tp += 1
         elif forwarded:
@@ -119,6 +157,19 @@ def acceptance(metrics: dict) -> dict[str, bool]:
     }
 
 
+def acceptance_rows(
+    metrics: dict, rows: list[dict], gate: CategoriesGate
+) -> dict[str, bool]:
+    """Spec criterion for --rows: no errors, at most one missed forward, >=60% of rejects cut."""
+    rejects = [r for r in rows if not _should_forward(r["label"], gate, True)]
+    cut = sum(1 for r in rejects if not r["forward"])
+    return {
+        "no_errors": metrics.get("errors", 0) == 0,
+        "forward_recall": len(metrics["misses"]) <= 1,
+        "reject_cut_60": bool(rejects) and cut / len(rejects) >= 0.6,
+    }
+
+
 def _load_gate(args: argparse.Namespace) -> CategoriesGate:
     if args.categories:
         with open(args.categories, "r", encoding="utf-8") as f:
@@ -140,12 +191,21 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     src = parser.add_mutually_exclusive_group(required=True)
     src.add_argument("--instance", help="Instance name in data/config.yml")
     src.add_argument("--categories", help="YAML file with a categories gate")
-    parser.add_argument("--export", action="append", required=True, default=[])
-    parser.add_argument("--gold", required=True)
+    parser.add_argument("--export", action="append", default=[])
+    parser.add_argument("--gold")
+    parser.add_argument(
+        "--rows", help="JSONL rows with owner_previous (instead of --export/--gold)"
+    )
     parser.add_argument("--out", default="data/evals")
     parser.add_argument("--concurrency", type=int, default=4)
     parser.add_argument("--label")
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.rows:
+        if args.export or args.gold:
+            parser.error("--rows cannot be combined with --export/--gold")
+    elif not (args.export and args.gold):
+        parser.error("either --rows or both --export and --gold are required")
+    return args
 
 
 def _argmax(probabilities: dict[str, float]) -> str | None:
@@ -168,43 +228,56 @@ async def run_eval(argv: list[str] | None = None, client=None) -> Path:
     if client is None:
         raise SystemExit("TYPESAFE_API_KEY is not set (env or typesafe_api_key)")
 
-    with open(args.gold, "r", encoding="utf-8") as f:
-        gold = {(int(g["chat_id"]), int(g["message_id"])): g for g in json.load(f)}
     known = set(gate.forward) | set(gate.reject)
+    if args.rows:
+        known |= {"forward", "reject"}
+        loaded = load_rows(args.rows)
+        labelled = [(r["label"], r) for r in loaded]
+    else:
+        with open(args.gold, "r", encoding="utf-8") as f:
+            gold = {(int(g["chat_id"]), int(g["message_id"])): g for g in json.load(f)}
+        labelled = [(g["label"], g) for g in gold.values()]
     unknown: dict[str, int] = {}
-    for g in gold.values():
-        if g["label"] not in known:
-            unknown[g["label"]] = unknown.get(g["label"], 0) + 1
+    for label, _ in labelled:
+        if label not in known:
+            unknown[label] = unknown.get(label, 0) + 1
     if unknown:
+        where = "Row" if args.rows else "Gold"
         detail = ", ".join(f"{k!r} ({v} rows)" for k, v in sorted(unknown.items()))
-        raise SystemExit(f"Gold labels not in the gate's categories: {detail}")
-    messages = load_export(args.export)
+        raise SystemExit(f"{where} labels not in the gate's categories: {detail}")
 
-    todo: list[tuple[dict, dict]] = []
     unlabeled = skipped_bots = 0
-    for msg in messages:
-        g = gold.get((msg["chat_id"], msg["message_id"]))
-        if g is None:
-            unlabeled += 1
-        elif g.get("is_bot"):
-            skipped_bots += 1
-        else:
-            todo.append((msg, g))
+    todo: list[dict] = []
+    if args.rows:
+        todo = loaded
+    else:
+        for msg in load_export(args.export):
+            g = gold.get((msg["chat_id"], msg["message_id"]))
+            if g is None:
+                unlabeled += 1
+            elif g.get("is_bot"):
+                skipped_bots += 1
+            else:
+                reply_to = msg.get("reply_to") if gate.reply_context else None
+                todo.append({**msg, "label": g["label"], "reply_to": reply_to})
 
     sem = asyncio.Semaphore(max(1, args.concurrency))
 
-    async def classify(msg: dict, g: dict) -> dict:
+    async def classify(item: dict) -> dict:
+        extra = {}
+        if item.get("owner_previous"):
+            extra["owner_previous"] = item["owner_previous"]
         async with sem:
-            reply_to = msg.get("reply_to") if gate.reply_context else None
             match = await categories.match_categories(
-                gate, msg["text"], reply_to=reply_to, client=client
+                gate,
+                item["text"],
+                reply_to=item.get("reply_to"),
+                client=client,
+                **extra,
             )
-        row = {
-            "chat_id": msg["chat_id"],
-            "message_id": msg["message_id"],
-            "text": msg["text"],
-            "label": g["label"],
-        }
+        row = {**_ref(item), "text": item["text"], "label": item["label"]}
+        if args.rows:
+            row["owner_previous"] = item["owner_previous"]
         if match is None:
             return {**row, "error": True}
         return {
@@ -218,18 +291,14 @@ async def run_eval(argv: list[str] | None = None, client=None) -> Path:
             "model": match.model,
         }
 
-    results = await asyncio.gather(*(classify(m, g) for m, g in todo))
+    results = await asyncio.gather(*(classify(i) for i in todo))
     ok = [r for r in results if not r["error"]]
     errors = len(results) - len(ok)
-    metrics = compute_metrics(ok, gate)
+    metrics = compute_metrics(ok, gate, binary=bool(args.rows))
     metrics["errors"] = errors
-    error_ids = [
-        {"chat_id": r["chat_id"], "message_id": r["message_id"]}
-        for r in results
-        if r["error"]
-    ]
+    error_ids = [_ref(r) for r in results if r["error"]]
     metrics["error_ids"] = error_ids
-    accept = acceptance(metrics)
+    accept = acceptance_rows(metrics, ok, gate) if args.rows else acceptance(metrics)
     models = sorted({r["model"] for r in ok if r.get("model")})
     counts = {
         "evaluated": len(ok),
@@ -271,13 +340,10 @@ async def run_eval(argv: list[str] | None = None, client=None) -> Path:
         print(f"{title}:")
         for it in items:
             p = it["p_forward"]
-            print(
-                f"  {it['chat_id']}:{it['message_id']} {it['label']}"
-                f"→{it['predicted']} {p:.2f}"
-            )
+            print(f"  {_ref_str(it)} {it['label']}→{it['predicted']} {p:.2f}")
     print("errors:")
     for e in error_ids:
-        print(f"  {e['chat_id']}:{e['message_id']}")
+        print(f"  {_ref_str(e)}")
     print(f"report: {path}")
     return path
 

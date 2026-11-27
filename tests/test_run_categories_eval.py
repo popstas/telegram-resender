@@ -358,3 +358,149 @@ async def test_unknown_gold_label_fails_fast(tmp_path, monkeypatch):
         await run_eval(argv, client=client)
     assert "typo_label" in str(exc.value) and "2 rows" in str(exc.value)
     assert client.calls == 0
+
+
+class RecordingClient(FakeClient):
+    def __init__(self):
+        super().__init__()
+        self.states = []
+
+    async def system_one(self, state, questions, *, model=None, **kwargs):
+        self.states.append(state)
+        return await super().system_one(state, questions, model=model, **kwargs)
+
+
+def _rows_argv(tmp_path, rows):
+    rows_path = tmp_path / "rows.jsonl"
+    rows_path.write_text(
+        "\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n\n",
+        encoding="utf-8",
+    )
+    cat = tmp_path / "cat.yml"
+    cat.write_text(
+        yaml.safe_dump(
+            {
+                "instructions": "q",
+                "forward": {"lead_direct": "a"},
+                "reject": {"other": "d"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    return [
+        "--categories",
+        str(cat),
+        "--rows",
+        str(rows_path),
+        "--out",
+        str(tmp_path / "out"),
+        "--label",
+        "r",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_rows_input_passes_owner_previous(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(categories, "config", {})
+    argv = _rows_argv(
+        tmp_path,
+        [
+            {
+                "id": "a1",
+                "text": "an offer here",
+                "owner_previous": ["earlier owner note"],
+                "label": "forward",
+            },
+            {
+                "id": "b2",
+                "text": "plain chatter",
+                "owner_previous": [],
+                "label": "reject",
+            },
+        ],
+    )
+    client = RecordingClient()
+    path = await run_eval(argv, client=client)
+    by_text = {s["message"]: s for s in client.states}
+    assert by_text["an offer here"]["owner_previous"] == ["earlier owner note"]
+    assert "owner_previous" not in by_text["plain chatter"]
+    report = json.loads(path.read_text(encoding="utf-8"))
+    assert report["counts"]["evaluated"] == 2
+    assert report["metrics"]["forwarded_by_label"] == {
+        "forward": [1, 1],
+        "reject": [0, 1],
+    }
+    assert report["metrics"]["forward_recall"] == 1.0
+    assert report["metrics"]["forward_precision"] == 1.0
+    assert report["acceptance"] == {
+        "no_errors": True,
+        "forward_recall": True,
+        "reject_cut_60": True,
+    }
+    assert {r["id"] for r in report["rows"]} == {"a1", "b2"}
+    assert "an offer here" not in capsys.readouterr().out
+
+
+@pytest.mark.asyncio
+async def test_rows_acceptance_fails_and_reports_ids(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(categories, "config", {})
+    argv = _rows_argv(
+        tmp_path,
+        [
+            {"id": "m1", "text": "plain one", "label": "forward"},
+            {"id": "m2", "text": "plain two", "label": "lead_direct"},
+            {"id": "f1", "text": "offer one", "label": "reject"},
+            {"id": "f2", "text": "offer two", "label": "other"},
+            {"id": "e1", "text": "boom", "label": "forward"},
+        ],
+    )
+    path = await run_eval(argv, client=FakeClient())
+    report = json.loads(path.read_text(encoding="utf-8"))
+    assert report["acceptance"] == {
+        "no_errors": False,
+        "forward_recall": False,  # two misses
+        "reject_cut_60": False,  # 0 of 2 rejects cut
+    }
+    assert [m["id"] for m in report["metrics"]["misses"]] == ["m1", "m2"]
+    assert [m["id"] for m in report["metrics"]["false_forwards"]] == ["f1", "f2"]
+    assert report["metrics"]["error_ids"] == [{"id": "e1"}]
+    out = capsys.readouterr().out
+    assert "m1" in out and "f2" in out and "e1" in out
+
+
+@pytest.mark.asyncio
+async def test_rows_unknown_label_fails_fast(tmp_path, monkeypatch):
+    monkeypatch.setattr(categories, "config", {})
+    argv = _rows_argv(tmp_path, [{"id": "x", "text": "t", "label": "typo"}])
+    client = FakeClient()
+    with pytest.raises(SystemExit) as exc:
+        await run_eval(argv, client=client)
+    assert "typo" in str(exc.value)
+    assert client.calls == 0
+
+
+@pytest.mark.asyncio
+async def test_rows_and_export_are_exclusive(tmp_path, monkeypatch):
+    monkeypatch.setattr(categories, "config", {})
+    argv = _rows_argv(tmp_path, [{"id": "x", "text": "t", "label": "reject"}])
+    with pytest.raises(SystemExit):
+        await run_eval(
+            [*argv, "--export", "e.json", "--gold", "g.json"], client=object()
+        )
+    with pytest.raises(SystemExit):
+        await run_eval([*argv, "--gold", "g.json"], client=object())
+
+
+@pytest.mark.asyncio
+async def test_export_mode_requires_export_and_gold(tmp_path, monkeypatch):
+    monkeypatch.setattr(categories, "config", {})
+    cat = tmp_path / "cat.yml"
+    cat.write_text(
+        yaml.safe_dump(
+            {"instructions": "q", "forward": {"a": None}, "reject": {"b": None}}
+        ),
+        encoding="utf-8",
+    )
+    for extra in ([], ["--export", "e.json"], ["--gold", "g.json"]):
+        with pytest.raises(SystemExit):
+            await run_eval(["--categories", str(cat), *extra], client=object())

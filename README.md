@@ -234,6 +234,9 @@ instances:
       model: jev-latest      # default
       threshold: 0.5         # in (0, 1], default 0.5
       reply_context: false   # default; true sends the replied-to message too
+      after_words: false     # default; true: the gate vetoes word-triggered batches
+      shadow: false          # default; true: only log the verdict
+      owner_context: 0       # default; last N owner messages go into the context
       instructions: >-
         We help clients with web development. Which category does the chat
         message belong to?
@@ -268,6 +271,12 @@ instances:
   `instructions` how to use `reply_to`. In forum topics a message that only
   belongs to a topic is not a reply. Costs one extra Telegram request per reply.
   `run_categories_eval` does the same when the parent is in the export.
+- `after_words: true` makes the gate a veto that runs after `words` when a
+  debounced batch is flushed: a batch classified into a `reject` category (or
+  below `threshold`) is not forwarded. Without it `words` and the gate are
+  alternatives ("or"). `shadow: true` only logs the verdict and forwards the
+  batch anyway, for tuning. `owner_context: N` adds the last N messages of the
+  chat owner (not older than 24 hours) to the gate context; `0` disables it.
 - Quotes are marked. Telegram sends a quote block (plain or expandable) as a
   `MessageEntityBlockquote` entity, so the plain text mixes the author's answer
   with the quoted comment. The gate gets the text with every quote line

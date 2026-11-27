@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 
 
+## Unreleased
+
+### Documentation
+
+- Employees DM gate design and plan
+
 ## v0.7.1 - 2026-11-27
 
 ### Features

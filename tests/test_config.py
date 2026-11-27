@@ -423,6 +423,41 @@ async def test_categories_reply_context():
 
 
 @pytest.mark.asyncio
+async def test_categories_after_words_shadow_owner_context_parsed():
+    base = {"instructions": "q", "forward": {"a": None}}
+    cfg = _cat_cfg({**base, "after_words": True, "shadow": True, "owner_context": 3})
+    inst = (await config.load_instances(cfg))[0]
+    assert inst.categories.after_words is True
+    assert inst.categories.shadow is True
+    assert inst.categories.owner_context == 3
+
+
+@pytest.mark.asyncio
+async def test_categories_new_flags_default_off():
+    base = {"instructions": "q", "forward": {"a": None}}
+    inst = (await config.load_instances(_cat_cfg(base)))[0]
+    assert inst.categories.after_words is False
+    assert inst.categories.shadow is False
+    assert inst.categories.owner_context == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("key", ["after_words", "shadow"])
+async def test_categories_after_words_must_be_bool(key):
+    base = {"instructions": "q", "forward": {"a": None}}
+    with pytest.raises(ValueError, match=key):
+        await config.load_instances(_cat_cfg({**base, key: "yes"}))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("value", ["yes", -1, True, 1.5])
+async def test_categories_owner_context_must_be_non_negative_int(value):
+    base = {"instructions": "q", "forward": {"a": None}}
+    with pytest.raises(ValueError, match="owner_context"):
+        await config.load_instances(_cat_cfg({**base, "owner_context": value}))
+
+
+@pytest.mark.asyncio
 async def test_categories_absent_is_none():
     cfg = {"instances": [{"name": "inst", "words": []}]}
     inst = (await config.load_instances(cfg))[0]
